@@ -1,0 +1,14 @@
+<%= yield %>
+
+<section id="tags">
+    <% @categories.each do |c| %>
+        <div class="rounded-toggle">
+            <%= check_box_tag c.name %>
+            <%= label_tag c.name %>
+        </div>
+    <% end %>
+</section>
+
+<section id="posts">
+    <%= render 'post/posts', :posts => @posts %>
+</section>

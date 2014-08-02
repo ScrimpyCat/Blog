@@ -1,0 +1,24 @@
+$(window).bind('page:change', function CategoryFilter(){
+    var blog_category_path = '<%= Rails.application.routes.url_helpers.blog_category_path %>/';
+    var blog_category_path_regex = new RegExp(blog_category_path + '?.*');
+
+    if (window.document.URL.match(blog_category_path_regex) == null) return;
+
+    var categoryFilters = $('#tags').find('input');
+    categoryFilters.change(function(e){
+        var tags = [];
+        $('#tags').find('input:checked').each(function(index, element){
+            tags.push(element.name);
+        });
+
+        var state = window.history.state;
+        state['url'] = state['url'].replace(blog_category_path_regex, blog_category_path + tags.join('+'))
+        window.history.replaceState(state, '', state['url']);
+        window.Turbolinks.visit(state['url']); //window.location = state['url'];
+    });
+
+    tags = window.history.state['url'].match(blog_category_path_regex)[0].substr(blog_category_path.length).split('+');
+    categoryFilters.each(function(index, element){
+        if (tags.indexOf(element.name) != -1) element.checked = true;
+    });
+});

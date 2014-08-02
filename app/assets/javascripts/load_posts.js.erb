@@ -1,0 +1,64 @@
+function RetrievePostsCallback(result){
+    /*
+        "begin" : attempting to retrieve posts
+        "failure" : failed to retrieve posts
+        "success" : successfully retrieved posts
+        "finished" : successfully retrieved posts and has finished (no more left to retrieve)
+    */
+}
+
+var RetrievePosts = _.throttle(function(){
+    if ($('body').height() - 200 <= ($(window).height() + $(window).scrollTop()))
+    {
+        $(window).off("scroll", RetrievePosts);
+
+        RetrievePostsCallback("begin");
+        $.ajax({
+            url: window.document.URL,
+            data: {
+                last_post_id: $('article').last().attr("id")
+            },
+            success: function(data){
+                if (data.posts == undefined) RetrievePostsCallback("failure");
+                else
+                {
+                    $('#posts').html(function(index, old){
+                        return old + data.posts;
+                    });
+
+                    if (data.finished == true) RetrievePostsCallback("finished");
+                    else
+                    {
+                        $(window).scroll(RetrievePosts);
+                        RetrievePostsCallback("success");
+                    }
+                }
+            }
+        });
+    }
+}, 100);
+
+$(window).bind('page:change', function LoadPosts(){
+    $(window).off("scroll", RetrievePosts);
+
+    var blogReloadPaths = [
+        { path: '<%= Rails.application.routes.url_helpers.blog_path %>/', match: '?(?!.)' }, 
+        { path: '<%= Rails.application.routes.url_helpers.blog_category_path %>/', match: '.+' },
+        { path: '<%= Rails.application.routes.url_helpers.blog_series_path %>/', match: '.+' }
+    ];
+
+    var blogPath;
+    for (var i = blogReloadPaths.length - 1; i >= 0; i--)
+    {
+        if (window.document.URL.match(new RegExp(blogReloadPaths[i].path + blogReloadPaths[i].match)) != null)
+        {
+            blogPath = blogReloadPaths[i].path;
+            break;
+        }
+    }
+
+    if (blogPath == undefined) return;
+
+    
+    $(window).scroll(RetrievePosts);
+});

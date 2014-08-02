@@ -1,0 +1,15 @@
+<header>
+    <nav>
+        <ul>
+            <% if !current_page?(blog_about_path) %>
+                <li><%= link_to "About", blog_about_path %></li>
+            <% end %>
+            <% if !current_page?(blog_path) %>
+                <li><%= link_to "Blog", blog_path %></li>
+            <% end %>
+            <% if Rails.application.routes.recognize_path(request.original_fullpath)[:controller] == 'post' and Rails.application.routes.recognize_path(request.original_fullpath)[:action] != 'view_category' %>
+                <li><%= link_to "Category", blog_category_path %></li>
+            <% end %>
+        </ul>
+    </nav>
+</header>

@@ -1,0 +1,17 @@
+<%= yield %>
+
+<% if @series.kind_of? ActiveRecord::Relation %>
+    <section id="series">
+        <% @series.each do |series| %>
+            <h1 class="title-link"><%= link_to series.name, blog_series_path(series.name.gsub(/ /, '-')) %></h1>
+        <% end %>
+    </section>
+<% else %>
+    <section id="series">
+        <h1><%= @series %></h1>
+    </section>
+
+    <section id="posts">
+        <%= render 'post/posts', :posts => @posts %>
+    </section>
+<% end %>

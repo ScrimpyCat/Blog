@@ -1,0 +1,39 @@
+nav {
+    line-height: 50px;
+    margin-left: 20%;
+    margin-right: 20%;
+    text-align: center;
+}
+
+nav ul {
+    padding: 0px;
+}
+
+nav ul li {
+    display: inline-block;
+    margin-bottom: 4px;
+}
+
+nav ul li a {
+    display: block;
+    height: 50px;
+    width: 180px;
+
+    color: #56a0d3;
+    background-color: #eee;
+
+    text-decoration: none;
+    font-family: "Helvetica Neue";
+    font-size: 1.3em;
+    font-weight: 200;
+}
+
+nav ul li a:hover {
+    color: #eee;
+    background-color: #56a0d3;
+    border: 2px solid;
+}
+
+nav ul li:hover {
+    margin: -2px -2px 2px;
+}

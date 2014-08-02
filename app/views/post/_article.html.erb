@@ -1,0 +1,27 @@
+<article id="post-<%= post.date.try(:to_time).try(:timestamp) %>">
+    <header>
+        <!--
+        <% if post.title %>
+            <h1 class="title-link"><%= link_to_unless_current(post.title, blog_post_path(:title => post.title.gsub(/ /, '-'))) %></h1>
+        <% end %>
+        -->
+        <div class="right-sided">
+            <% if post.date %>
+                <h6><%= post.date.strftime('%B %-d %Y') %></h6>
+            <% end %>
+            <% if post.author %>
+                <h6>by <%= post.author %></h6>
+            <% end %>
+        </div>
+        <div class="left-sided">
+            <% if post.series %>
+                <h6 class="title-link"><%= link_to post.series.name, blog_series_path(post.series.name.gsub(/ /, '-')) %></h6>
+            <% end %>
+        </div>
+    </header>
+    <% if post.title %>
+        <h1 class="title-link"><%= link_to_unless_current(post.title, blog_post_path(:title => post.title.gsub(/ /, '-'))) %></h1>
+    <% end %>
+    
+    <%= post.content_html %>
+</article>
