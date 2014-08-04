@@ -31,7 +31,7 @@ namespace :post do
         if filename = args[:file]
             if !Post.where('lower(content) = :file', :file => file = (filename + '.post')).first
                 if File.exists?(file = "#{POST_DIR}/#{file}")
-                    info = PostTemplate.extract_info(File.read(file))
+                    info = AssetTemplate::PostTemplate.extract_info(File.read(file))
                     Post.create_with_info!(info.merge('content' => filename + '.post'))
                 else
                     puts "Error: File does not exist. post:create[#{filename}]"
@@ -49,7 +49,7 @@ namespace :post do
         if filename = args[:file]
             if post = Post.where('lower(content) = :file', :file => file = (filename + '.post')).first
                 if File.exists?(file = "#{POST_DIR}/#{file}")
-                    info = PostTemplate.extract_info(File.read(file))
+                    info = AssetTemplate::PostTemplate.extract_info(File.read(file))
                     Post.where('lower(content) = :file', { :file => filename + '.post' }).first.update_with_info!(info.merge('content' => filename + '.post'))
                 else
                     puts "Error: File does not exist. To remove the database reference use post:remove[#{filename}]"
