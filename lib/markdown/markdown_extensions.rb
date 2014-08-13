@@ -65,4 +65,19 @@ module MarkdownExtension
             ""
         end
     end
+
+    class CodeBlock < Block
+        place_before(SimpleMarkdown)
+        def self.identifier
+            /@code:[[:space:]]*.*?/m
+        end
+
+        def self.execute(string, converters, block_range, body_range)
+            syntax = string[block_range.min+6..body_range.min-2].strip
+            highlighted = Rouge.highlight(string[body_range], Rouge::Lexer.find(syntax) || 'text', 'html')
+            string[block_range] = ""
+
+            highlighted
+        end
+    end
 end

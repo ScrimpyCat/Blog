@@ -16,6 +16,8 @@ gem 'underscore-rails'
 
 gem 'simple_markdown', :github => 'ScrimpyCat/SimpleMarkdown'
 
+gem 'rouge'
+
 gem 'uglifier', '>= 1.3.0'
 
 group :doc do
