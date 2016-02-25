@@ -4,7 +4,7 @@ namespace :post do
     desc "Create a new post"
     task :create, [:file] do |t, args|
         if filename = args[:file]
-            if !Dir.exists?(POST_DIR) then Dir.mkdir(posts) end
+            if !Dir.exists?(POST_DIR) then Dir.mkdir(POST_DIR) end
             if !File.exists?(file = "#{POST_DIR}/#{filename}.post")
                 File.write(file,
                     """
