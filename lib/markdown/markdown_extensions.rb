@@ -74,7 +74,7 @@ module MarkdownExtension
 
         def self.execute(string, converters, block_range, body_range)
             syntax = string[block_range.min+6..body_range.min-2].strip
-            highlighted = Rouge.highlight(string[body_range], Rouge::Lexer.find(syntax) || 'text', 'html')
+            highlighted = Rouge.highlight(string[body_range].strip, Rouge::Lexer.find(syntax) || 'text', 'html')
             string[block_range] = ""
 
             highlighted

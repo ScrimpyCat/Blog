@@ -1,6 +1,6 @@
 GIT
   remote: git://github.com/ScrimpyCat/SimpleMarkdown.git
-  revision: 5d4cfcb264f75c1668243b635567cb844b655998
+  revision: 966254f5f118bd6f4521d30404403bcefb2f98c9
   specs:
     simple_markdown (0.0.0)
 
