@@ -1,0 +1,50 @@
+---
+title: My Programming Backstory
+author: ScrimpyCat
+date: 2016-02-26T17:56:56+11:00
+series: About Me
+tags: bio
+---
+
+How I got my start in programming is a bit different than the usual story, it seems to share more similarities with how people used to get into it over how most find their interest with it nowadays. 
+
+It all started in 2008 when I got my first computer (at age 16), prior to this I wasn't an avid computer user and often found myself not sure what I was doing half the time. Though I was an avid gamer (console, and occasionally some PC games at school). Well after getting my first computer, I was at first just using it like any typical teenager (entertainment, messaging, school work, etc.). After awhile I took a particular interest in a MMORPG I was playing at the time, and decided to look into how people went about using cheats/hacks in it.
+
+First Exposure
+--------------
+
+At the time people were hacking it using a tool designed to simplify editing the data.pak file. With this we could change things such as disabling an enemy's aggressiveness or attack, the amount of enemies you could lure, etc. The other alternative was grabbing a hex editor and going through and making the changes to the data.pak manually, this was needed if we wanted to change things the tool didn't handle, such as the player's speed.
+
+I played around with editing the data.pak for a little but it wasn't until sometime later when someone worked out how to unpack the data.pak that my interest and involvement really peaked.
+
+Data Files Exposed!
+-------------------
+
+Someone released a tool that could unpack the data.pak (expose its directory structure and files), and worked out that you could get the game to run using those unpacked files by adding a launch option. This was a big thing, especially for me, as it meant all the data was now structured logically and in readable/useful formats (such as .csv's).
+
+As a result me and a friend took right to it, we made some alternate characters to hack on and just dived into the files. Seeing what could be changed, what happens if you change it. We figured out a number hacks, and started getting a pretty solid understanding of how things worked in the game.
+
+It wasn't until quite sometime later (well into 2009) when I found out you could modify the executable itself.
+
+You Can Do What?!
+-----------------
+
+I had no idea that was even possible. But now knowing that you could actually take a look at all the executable's code (albeit its disassembly), and modify whatever you wanted.
+
+So I grabbed OllyDbg (a windows debugger and disassembler for x86), and started stepping through the instructions. At first I had no idea what I was doing, but over time seeing what changes when you step over an instruction, and changing an instruction(s) to something else, I started to get a feel for how assembly worked. *Yes, I really was crazy (naive?) enough to learn assembly without a resource (it's not a path I recommend others to take, although I do strongly recommend learning asm and I think it's a really good first language but please for your sake use a book, haha; and as a side note to any potential future employers, don't worry I have since gone through the Intel manuals).* 
+
+After familiarising myself with assembly and OllyDbg, I then found an instruction reference sheet, and learnt about a tool call Cheat Engine. From here on out I started reversing routines in the game, finding what routines modify particular data and writing Cheat Engine auto-assembler scripts. And at some stage I moved onto MASM32 as well, and started writing separate Windows programs. *One of the most amusing hacks during this period was the game gave special (game master) abilities to characters whose name contained a certain prefix. While most of these abilities were handled by the server, the only thing that was stopping a player from creating a character with that prefix was a clientside check (as you can guess you'd just nop that sucker out).*
+
+Watchout, I'll Hack You
+-----------------------
+
+Don't worry I never actually became like that. But I did begin to get interested in the general hacking side. I started getting involved in the reverse engineering scene (solving crackme's, keygenme's), as well as learning about exploitation.
+
+This also tied back in with what I was doing in the game hacking scene. *Some of these things were gaining admin access to a test version of their website, to finding a buffer overflow in the chat protocol for one game (never went through with exploiting this vulnerability however), to discovering a SQL exploit in a survey service a company used to give game currency (essentially in-app currency) for survey completions (was able to trick the service into thinking I completed a survey and hence get as much currency as required).* But after sometime of hacking games and delving further into the more general reversing and exploitation side, I eventually began shifting over to the private server scene. As the private server files for one game I was involved in got leaked and people started running their own servers.
+
+Introduction To Game Development
+--------------------------------
+
+While I wouldn't really call this game development, *at least not what one usually thinks when talking about game development,* it was what led to my interest in it. With numerous people running their own servers, there was a need to find out what was possible with the current files (how could new stuff be added), and how to keep these old files up to date with the official game. That's where my involvement took place. *Some of the more interesting discoveries was that the game's client (the same one everybody has) actually still had the editing tools (map editor, character/monster editor, visual effects debugging, UI editor, etc.) inside it, the only thing they removed was the code to launch it. So adding that, I was able to launch into the map editor or other editing modes.* During this period I also briefly got interested in emulator development.
+
+This all eventually led to me gaining an interest in actually making my own games sometime in 2010. The rest has kind of been history since then. I've moved into other areas that have taken my interest, but I've still kept up my interest in game development.

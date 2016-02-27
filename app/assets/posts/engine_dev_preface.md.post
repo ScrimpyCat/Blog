@@ -1,0 +1,11 @@
+---
+title: Engine Dev - Preface
+author: ScrimpyCat
+date: 2016-02-26T23:10:02+11:00
+series: Engine Development
+tags: gamedev
+---
+
+This is a series where I'll be detailing some of my thoughts and processes with development of my game engine (and possibly game). The source for the in-development engine can be found here: [https://github.com/ScrimpyCat/Blob-Game](https://github.com/ScrimpyCat/Blob-Game). There isn't going to be a set frequency or order for these posts.
+
+The engine is written in C and will support Mac OS X/Linux/Windows and possibly iOS.

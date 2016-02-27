@@ -1,0 +1,246 @@
+---
+title: Engine Dev - Scripting
+author: ScrimpyCat
+date: 2016-02-26T23:49:33+11:00
+series: Engine Development
+tags: [gamedev, optimization, tagged pointers]
+---
+
+Offering scripting in an engine isn't a must, but for an engine written in a language such as C, having a scripting language can provide a lot of benefit. As you can easily allow stuff like hot code reloading, simplify certain actions, offer a more user friendly way to interface with the engine, etc.
+
+Selecting The Language
+----------------------
+
+In the past I've used Javascript, JSCocoa (extended with some of my own modifications), a visual node-based language. While these were all fine options, I wanted something a little different out of this scripting language.
+
+I had been spending a lot of time with Elixir and a key interest of mine with the language (coming from Erlang) was its macro system. Being able to access the AST and manipulate it however you like, in the language itself. This led me to learning about homoiconicity (Elixir isn't homoiconic however) where the language itself is also its data, such as with languages like Lisp or Scheme. While homoiconicity for the purpose of metaprogramming was not of concern for how I saw its use in the engine, the fact that the language is also the structure of its data is what made it an attractive concept. 
+
+One Syntax For All The Things!
+------------------------------
+
+The thought of being able to use the same syntax for custom data formats (in-place of where you might have used XML, some other markup language, or even rolled some custom structure in the past) and for the scripts, was a tempting concept. 
+
+Now there are languages that have a data format, and then extra syntactical features for representing operations/manipulation and program structure which is not included. Such as Javascript with JSON, or Erlang/Elixir with its data types (terms can be parsed using `io:read`), etc. But the languages with a Lisp-like representation won me over, as there was something so elegant about exact relation between data structure and code.
+
+@code:scheme
+{
+; Example of current scripting and what I had in mind at the time.
+(library "mylib" ; A shader library with fixed sources
+    (if @opengl (
+        (source "vert" vertex (dir "myshader.vs"))
+        (source "frag" fragment (dir "myshader.fs"))
+    ))
+)
+
+(library "core" ; A shader library that uses all the .fs/.vs files in the current directory
+    (if @opengl (
+        (loop "file" (search @cd ("*.fs" "*.vs")) 
+            (source 
+                (replace "." "-" (filename file)) 
+                (if (suffix "fs" file) fragment vertex) 
+                (dir file)
+            )
+        )
+    ))
+)
+
+(gui "gui-rect" ; Creating a new UI object type
+    (state! "colour" (1.0 0 0))
+    (render
+        (render-rect rect colour)
+    )
+)
+
+(gui-rect ; Using the UI
+    (enabled! 0)
+    (rect! 0 0 (quote (super (percent-width 50))) (quote (super (percent-height 50))))
+    (children
+        (gui-rect
+            (colour! (0 0 1.0))
+            (rect! (quote ((super (percent-width 25)) (super (percent-height 25)) (super (percent-width 50)) (super (percent-height 50))))
+        )
+    )
+)
+}
+
+Scheme
+------
+
+So it was decided, Scheme was my favourite choice for a language to use. I started looking for implementations which would be appropriate, some obvious options were: [Chibi Scheme](https://github.com/ashinn/chibi-scheme), [s7](https://ccrma.stanford.edu/software/snd/snd/s7.html), [TinyScheme](http://tinyscheme.sourceforge.net/home.html). With some recommended options being: [Guile](http://www.gnu.org/software/guile/) and [CHICKEN](http://www.call-cc.org).
+
+The Story
+---------
+
+I ended up going with Chibi Scheme, as its benchmarks looked good (faster than vanilla Lua) and the C API did not look too complicated. However I had trouble getting it to work as a library. Evaluating expressions would just return an exception. I was definitely messing something up, but not sure what, and the limited docs (from what I could find) didn't help much either.
+
+At the time I didn't think much of it, I'll revisit the issue when I need to. But I did want to start introducing some configuration files to the engine. So the obvious solution was to roll my own, *right? RIGHT?*. As I only need it for some simple data representation, I really only needed some basic parsing (parsing a Lisp-like language is one of the simplest parsers you can write). So I decided to do just that.
+
+The implementation is different than your usual implementation, as I wasn't expecting to use it for anything more (only as a temporary solution). So I didn't go with s-expressions, but rather an expression or list (array) of expressions. And didn't do much in the way of designing evaluation to be efficient, I went with the lazy option of just making it copy heavy (expressions are copied when they're passed around).
+
+In Too Deep
+-----------
+
+I eventually kept pushing off using a proper implementation, and kept hacking away at my own, adding features as needed. I did get to a point where I saw if I go any further with it I'd probably just stick with it. So I decided to try out some of the other implementations, s7 was very easy to setup and use. And I gave serious consideration to using it, but I ultimately decided the API I had created for my own language was simpler to use. But if I ever reach a problem point with it, I'll likely switch.
+
+So I kept this odd hack of a language. Now one lingering thought was performance, I knew I'd have to optimize it at some point. One approach would be to just redesign it, but there were obvious optimizations I could make in the meantime for reasonable performance gain. *They might even be enough, as I'm not planning on making scripts very logic heavy anyway.*
+
+Two of the clear areas to be optimized would be function lookup and copying expressions. Function lookups are currently just looping an array of strings looking for a match, an obvious optimization would be to convert it to a hash map. While copying expressions is another big problem, as a copy is an allocation. Two solutions (both can be used together) to this problem are introducing reference counting, as expressions are immutable this is a good approach. While the other is to introduce tagged types (tagged pointers), to allow the creation of types that don't actually need to allocate data but can store the necessary data in the pointer itself.
+
+Tagged Pointers
+---------------
+
+Tagged pointers are a common concept among language developers/compiler hackers. It essentially involves storing additional data in a pointer. This is often done because many platforms different types have different alignments, and many have malloc's which return pointers at word boundaries. If that is true for a particular platform, it essentially means you always have some bits that will never be used. Or you can choose to enforce alignment yourself, so you'll know you have the number of bits required free.
+
+Now I was using it as a way to alleviate the cost of copying expressions, by forgoing from allocating whenever possible. My expressions have the following types: atoms (string), strings, integers (int32), floats (float/binary32), list, custom data. Obvious choices to apply this concept are strings, integers, floats, and atoms. 
+
+Strings
+-------
+
+With strings I decided to leverage the tagged variety [my string implementation](https://github.com/ScrimpyCat/Common/blob/master/CommonC/CommonC/CCString.c) already supports. It does this by reserving the last 2 bits of the pointer to indicate what type of string it is. There is essentially 2 *(well 3, a constant string but that's not included in the tagged pointer)* strings, a regular string (pointer to structure containing string data), and a tagged string (pointer is the string itself).
+
+The tagged strings act essentially as an array of character map indices shifted together. They're limited to a particular max length, but the character maps can be customized for the apps particular use case and 3 different maps of differing bit ranges are supported to extend the length of the strings. Those 2 bit values mentioned previously, indicate one of the three different versions of tagged strings.
+
+```
+xxxxxxxx xxxxxxxx xxxxxxxx xxxxxx00 -> pointer to allocated string
+xxxxxxxx xxxxxxxx xxxxxxxx xxxxxx01 -> tagged string (CCStringMapSet127)
+xxxxxxxx xxxxxxxx xxxxxxxx xxxxxx10 -> tagged string (CCStringMapSet63)
+xxxxxxxx xxxxxxxx xxxxxxxx xxxxxx11 -> tagged string (CCStringMapSet31)
+```
+
+With 2 bits used up from the pointer this gives us 30 bits to spare on 32 bit platforms, and 62 bits to spare on 64 bit platforms. The 3 character maps used, use the bit ranges of 5 (31 character lookup), 6 (63 character lookup), 7 (127 character lookup). So the 5 bit range (smallest lookup) will allow a string of length 6 (on 32 bit platform) and 12 (on 64 bit platform).
+
+
+```
+32 bit
+66666555 55444443 33332222 211111tt : max 6 characters (CCStringMapSet31)
+55555544 44443333 33222222 111111tt : max 5 characters (CCStringMapSet63)
+xx444444 43333333 22222221 111111tt : max 4 characters (CCStringMapSet127)
+
+64 bit
+xxcccccb bbbbaaaa a9999988 88877777 66666555 55444443 33332222 211111tt : max 12 characters (CCStringMapSet31)
+xxaaaaaa 99999988 88887777 77666666 55555544 44443333 33222222 111111tt : max 10 characters (CCStringMapSet63)
+xxxxxx88 88888777 77776666 66655555 55444444 43333333 22222221 111111tt : max 8 characters (CCStringMapSet127)
+```
+
+Now because of this, I decided to preserve the last 2 bits of a tagged expression to indicate a string (a tagged string). As this saves me from having to add any extra complication to using strings in this manner. Because of this any following tagged expressions will need to use bits above the 2 bit range (those will have to remain empty). So I went with a 3rd bit to indicate that it's one of the other tagged expression types, and then require only 2 more bits to select the type. Reason I went with this is it allows me to only need pointers to be 8 byte aligned. Since to test whether an expression is a tagged expression only requires checking if any of the first 3 bits are set.
+
+```
+xxxxxxxx xxxxxxxx xxxxxxxx xxxxx000 -> pointer to allocated expression
+xxxxxxxx xxxxxxxx xxxxxxxx xxxxxx01 -> tagged expression (string)
+xxxxxxxx xxxxxxxx xxxxxxxx xxxxxx10 -> tagged expression (string)
+xxxxxxxx xxxxxxxx xxxxxxxx xxxxxx11 -> tagged expression (string)
+xxxxxxxx xxxxxxxx xxxxxxxx xxxxx100 -> tagged expression
+
+xxxxxxxx xxxxxxxx xxxxxxxx xxx00100 -> tagged expression (atom)
+xxxxxxxx xxxxxxxx xxxxxxxx xxx01100 -> tagged expression (integer)
+xxxxxxxx xxxxxxxx xxxxxxxx xxx10100 -> tagged expression (float)
+xxxxxxxx xxxxxxxx xxxxxxxx xxx11100 -> tagged expression (unused)
+```
+
+Integers
+--------
+
+As the other tagged expression types are left with 27 unused bits on a 32 bit platform, and 59 unused bits on a 64 bit platform. This meant that on a 64 bit platform as the language only uses 32 bit integers, we could store the entire integer in a tagged expression. However a 32 bit platform could only store 27 bits worth.
+
+To more effectively make use of the storage on a 32 bit platform, I assumed the most common integer values that will be used will be around the 0 range, rather than being close to `INT32_MIN` or `INT32_MAX`. So an even distribution (including the signed bit) using 27 bits would allow for a value range of -67108864 to 67108863.
+
+```
+32 bit (only between range -67108864 to 67108863)
+vvvvvvvv vvvvvvvv vvvvvvvv vvs01100 : s = signed bit, v = value
+vvvvvvvv vvvvvvvv vvvvvvvv vv001100 : value << 5 (positive)
+vvvvvvvv vvvvvvvv vvvvvvvv vv101100 : ~(-1 + (value + 1)) << 5 (negative)
+
+64 bit (full range INT32_MIN to INT32_MAX)
+xxxxxxxx xxxxxxxx xxxxxxxx xxxvvvvv vvvvvvvv vvvvvvvv vvvvvvvv vvv01100 : value << 5
+```
+
+Floats
+------
+
+Like integers, with float's being binary32's, the 64 bit implementation is trivial. However deciding how to handle it on 32 bit platforms becomes a little trickier. While I just took a naive approach by reducing the precision of the mantissa, so tagged floats are any that can be represented why 1 signed bit, 8 exponent bits, and only 18 (instead of 23) mantissa bits. While this is trivial and fast, it leaves a lot to be desired as it is not an effective distribution of values.
+
+One approach could be reducing the precision of the exponent, however with 5 bits being used up, reducing the exponent down to 3 bits does not allow for a very big range of values. One obvious range might be to use it around 127 to 134 (127 + 7 bit value). This would give us full binary32 precision from the ranges of 1.0e+00 up to 256.0e+02 (and their negatives). Or if wanting to include some of the lower range, using 123 to 130 might be a good range. This would give the full range of precision for values in the ranges of 6.25e-02 up to 1.6e+01 (and their negatives). But trying to include more of the lower range starts to become more problematic, as the precision starts to grow.
+
+Another approach is storing it in an entirely different format, that can be better optimized for its specific use. An example of this might be if we wanted a format that only needed 5 decimal places of precision, and ranged from 1.0 up to the highest value possible (including negative) with the 27 bits available. One possible way to represent this could be as an integer multiple of 100000 (so it has the 5 decimal places), where 0 will equal 1.0, and reserving the highest bit for the signed bit.
+
+@code:c
+{
+#include <stdint.h>
+
+typedef union {
+    float f;
+    uint32_t u;
+    int32_t i;
+    struct {
+        uint32_t mantissa : 23;
+        uint32_t exponent : 8;
+        uint32_t sign : 1;
+    } internal; //Requires a compiler that will guarantee this bit order
+} binary32_t;
+
+float UInt32ToFloat(uint32_t v) //This is a redundant function, as it could simply cast it to a float. But this is more interesting :P
+{
+    //Find the highest set bit
+    uint32_t e = v;
+    e |= e >> 1;
+    e |= e >> 2;
+    e |= e >> 4;
+    e |= e >> 8;
+    e |= e >> 16;
+    e ^= (e >> 1);
+    
+    //Get mask for lowest unset bits, and store the non-power of 2 value in m
+    uint32_t m = (e = ~-e) & v;
+    
+    //Count set bits
+    e -= ((e >> 1) & 0x55555555);
+    e = (e & 0x33333333) + ((e >> 2) & 0x33333333);
+    e = (e + (e >> 4)) & 0xf0f0f0f;
+    e = (e * 0x1010101) >> 24;
+    
+    return (binary32_t){ .internal = { .exponent = e + 127, .mantissa = m << (23 - e) } }.f;
+}
+
+float IntRepToFloat(uint32_t v)
+{
+    _Bool s = v & 0x80000000; //Get signed bit
+    v = (v & 0x7fffffe0) >> 5; //Get value (removing signed bit and tagged mask)
+    v += 100000; //Adjust the value so it begins from 1.0
+    binary32_t f = (binary32_t){ .f = UInt32ToFloat(v / 100000) }; //Convert the whole number to a float
+    f.internal.sign = s; //Set the signed bit of the float
+
+    //Get the fractional portion of the value (no need to worry about rounding as the expected input would be originally created from a valid float anyway)
+    for (int Index = 0; (Index < 22) && (v); Index++)
+    {
+        v = (v % 100000) * 2;
+        f.internal.mantissa |= ((v >= 100000) << (22 - Index)) >> (f.internal.exponent - 127);
+    }
+    
+    return f.f;
+}
+
+/*
+ IntRepToFloat(0) -> 1.00000
+ IntRepToFloat(100000 << 5) -> 2.00000
+ IntRepToFloat(125000 << 5) -> 2.25000
+ IntRepToFloat((125000 << 5) | 0x80000000) -> -2.25000
+ IntRepToFloat(0x7fffffe0) -> 672.08862 (max)
+ IntRepToFloat(0xffffffe0) -> -672.08862 (min)
+*/
+}
+
+The caveats of this approach however are it requires additional processing, whereas the other approaches only involve a few operations to repair the float. And in this particular example, it's not making effective use of all the bits we have available. As the floating point precision of the 5 decimal places become less effective the larger the value becomes. In other words, not all the bits will represent a unique floating point value.
+
+What approach I'll change over to is still to be determined, as I'm not too sure what values be used the most. There are some likely attributes I'd want. Will definitely want to support a range from 0.0 - 1.0 (including negative), as well as larger values, probably capping off around the 140 exponent value. Some things that's unlikely to be needed (or won't be a common occurrence) will be infinite values, NaN's, denormals, and as mentioned very large values.
+
+Atoms
+-----
+
+Implementing a tagged type for atoms has not been done as of yet, but the general idea is as follows. As atoms are mostly used as function references, state references, and as unique words (options). The best outcome is one that tells you the type of atom it is, has a reference or can obtain a reference to the function or state in as few steps as possible, and comparing of atoms is quick. One current caveat is new state could be created at anytime, and new functions could be added at anytime.
+
+The current idea is to use some bits to denote the type of atom it is, this will essentially act as a cache, as the system will need to re-evaluate this if any breaking changes have been made. All the atom strings will be stored in a lookup, and reserve some bits of the tagged atom as an index reference to their string, so code that uses atom strings still functions correctly. And lastly depending on the atom type, if it is a function reserve some bits for an index to the function. Ideally some similar information could be used for states references too, but the current implementation of expression's state makes it a little tricky.
+
+Concluding
+----------
+
+In conclusion, this was a look at what led me to the decisions I made with the scripting language, and one of the optimization techniques used. I chose not to go into detail about the language, as it's currently changing too much and it's far from complete in its current state. So that will be saved for a future post.

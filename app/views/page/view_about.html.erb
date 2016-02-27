@@ -1,6 +1,6 @@
 <%= yield %>
 <section id="about">
     <article>
-        <p>The code behind this blog can be found here: <a href="https://github.com/ScrimpyCat/Blog">https://github.com/ScrimpyCat/Blog</a></p>
+	    <%= Blog::Application.assets.find_asset('about.html.md').source.html_safe %>
     </article>
 </section>
