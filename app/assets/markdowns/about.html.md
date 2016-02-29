@@ -11,7 +11,7 @@ Who am I?
 
 My name is Stefan. And I'm just a strange and somewhat idealistic individual with a deep passion for programming (main areas of interest being game development, graphics, optimization, reverse engineering, and languages) and business (in-particular entrepreneurship and social entrepreneurship, organizational structure and management, economics, and trading). 
 
-If you are interested in my back story for how I got into programming you can check that out here: [How I got into programming](../blog/My-Programming-Backstory)
+If you are interested in my back story for how I got into programming you can check that out here: [How I got into programming](../My-Programming-Backstory)
 
 
 Curious to see how this blog works?

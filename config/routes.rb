@@ -1,11 +1,9 @@
 Blog::Application.routes.draw do
-    root :to => redirect('/blog')
-
     scope :controller => :page do
         get '/about', :to => :view_about, :as => 'blog_about'
     end
 
-    scope :path => '/blog', :controller => :post do
+    scope :controller => :post do
         get '/category/(:tags)', :to => :view_category, :as => 'blog_category'
         get '/series/(:series)', :to => :view_series, :as => 'blog_series'
         get '/:title', :to => :view_single, :as => 'blog_post'
