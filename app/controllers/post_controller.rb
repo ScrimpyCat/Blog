@@ -3,7 +3,7 @@ class PostController < ApplicationController
 
     def view_single
         if params[:title] != nil
-            @post = Post.where("replace(lower(title), ' ', '-') = :title", { :title => params[:title].downcase.gsub(/ /, '-') }).first
+            @post = Post.where(:link => params[:title].downcase.gsub(/ /, '-')).first
         else
             @post = Post.find_by(:id => params[:id])
         end

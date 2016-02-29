@@ -1,6 +1,7 @@
 class Post < ActiveRecord::Base
     validates :author, :length => { :maximum => 50 }
-    validates :title, :length => { :maximum => 250 }, :allow_nil => true, :allow_blank => true, :uniqueness => { :case_sensitive => false }, :unique_link => true, :exclusion => { :in => %w[category series] }
+    validates :title, :length => { :maximum => 250 }, :allow_nil => true, :allow_blank => true, :uniqueness => { :case_sensitive => false }
+    validates :link, :length => { :maximum => 250 }, :allow_nil => true, :allow_blank => true, :uniqueness => { :case_sensitive => false }, :exclusion => { :in => %w[category series] }
 
     has_many :tags
     has_many :categories, :through => :tags, :dependent => :destroy
@@ -28,6 +29,7 @@ class Post < ActiveRecord::Base
         end
 
         post[:title] = info['title'] ? info['title'].to_s : nil
+        post[:link] = info['title'] ? info['title'].to_s.linkify : nil
         post[:author] = info['author'] ? info['author'].to_s : nil
         post[:date] = info['date']
         post[:content] = info['content'].to_s
