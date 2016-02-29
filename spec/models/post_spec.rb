@@ -15,6 +15,7 @@ describe Post do
     it { is_expected.to respond_to(:author) }
     it { is_expected.to respond_to(:date) }
     it { is_expected.to respond_to(:title) }
+    it { is_expected.to respond_to(:link) }
     it { is_expected.to respond_to(:content) }
     it { is_expected.to respond_to(:categories) }
 
@@ -22,6 +23,7 @@ describe Post do
 
     test_max_length(:author, 50)
     test_max_length(:title, 250)
+    test_max_length(:link, 250)
 
     describe "content has no limit" do
         before { @post.content = "a"*10000 }
@@ -48,13 +50,20 @@ describe Post do
         it { is_expected.to be_valid }
     end
 
-    describe "title is empty for two posts" do
+    describe "link is empty" do
+        before { @post.link = "" }
+        it { is_expected.to be_valid }
+    end
+
+    describe "title and link are empty for two posts" do
         before {
             post_with_same_title = @post.dup
             post_with_same_title.title = ""
+            post_with_same_title.link = ""
             post_with_same_title.save
 
             @post.title = ""
+            @post.link = ""
         }
 
         it { is_expected.to be_valid }
@@ -71,17 +80,16 @@ describe Post do
     end
 
     %w[category series].each { |reserved|
-        describe "title is reserved name '#{reserved}'" do
-            before { @post.title = reserved }
+        describe "link is reserved name '#{reserved}'" do
+            before { @post.link = reserved }
             it { is_expected.to_not be_valid }
         end
     }
 
-    describe "title as link is already taken" do
+    describe "link is already taken" do
         before {
-            @post.title = 'Will look the same'
+            @post.link = 'some-link'
             post_with_same_link = @post.dup
-            post_with_same_link.title.gsub!(/ /, '-')
             post_with_same_link.save
         }
 

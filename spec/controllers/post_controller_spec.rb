@@ -5,7 +5,7 @@ describe PostController do
     before {
         category = FactoryGirl.create(:category)
         series = FactoryGirl.create(:series)
-        1.upto(PostController::BATCH_MAX + 1) { |i| FactoryGirl.create(:post, :title => nil, :date => day_after_last_post.prev_day(i), :categories => [category], :series => series) }
+        1.upto(PostController::BATCH_MAX + 1) { |i| FactoryGirl.create(:post, :title => nil, :link => nil, :date => day_after_last_post.prev_day(i), :categories => [category], :series => series) }
     }
 
     let(:last_from_batch_id){ "post-#{Post.limit(PostController::BATCH_MAX).last.date.to_time.timestamp}" }
@@ -101,7 +101,7 @@ describe PostController do
         describe 'post from title' do
             before {
                 FactoryGirl.create(:post)
-                get :view_single, :title => FactoryGirl.attributes_for(:post)[:title]
+                get :view_single, :title => FactoryGirl.attributes_for(:post)[:link]
             }
 
             it { expect(response).to be_success }

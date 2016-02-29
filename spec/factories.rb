@@ -11,6 +11,7 @@ FactoryGirl.define do
         author "worker"
         date Date.new(2014, 1, 1)
         title "Hello Factory"
+        link 'hello-factory'
         content "Just saying hello from this factory."
     end
 
