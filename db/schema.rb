@@ -11,7 +11,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema.define(version: 20140623202411) do
+ActiveRecord::Schema.define(version: 20160229162131) do
 
   create_table "categories", force: true do |t|
     t.string   "name",       limit: 50, null: false
@@ -36,6 +36,7 @@ ActiveRecord::Schema.define(version: 20140623202411) do
     t.text     "content"
     t.datetime "created_at"
     t.datetime "updated_at"
+    t.string   "link",       limit: 250
   end
 
   create_table "series", force: true do |t|
