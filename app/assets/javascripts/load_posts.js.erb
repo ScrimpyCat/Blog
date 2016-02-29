@@ -42,9 +42,9 @@ $(window).bind('page:change', function LoadPosts(){
     $(window).off("scroll", RetrievePosts);
 
     var blogReloadPaths = [
-        { path: '<%= Rails.application.routes.url_helpers.blog_path %>', match: '?(?!.)' }, 
-        { path: '<%= Rails.application.routes.url_helpers.blog_category_path %>', match: '.+' },
-        { path: '<%= Rails.application.routes.url_helpers.blog_series_path %>', match: '.+' }
+        { path: '<%= Rails.application.routes.url_helpers.blog_path %>/', match: '?(?!.)' }, 
+        { path: '<%= Rails.application.routes.url_helpers.blog_category_path %>/', match: '.+' },
+        { path: '<%= Rails.application.routes.url_helpers.blog_series_path %>/', match: '.+' }
     ];
 
     var blogPath;
