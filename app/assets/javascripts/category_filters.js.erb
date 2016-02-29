@@ -1,5 +1,5 @@
 $(window).bind('page:change', function CategoryFilter(){
-    var blog_category_path = '<%= Rails.application.routes.url_helpers.blog_category_path %>/';
+    var blog_category_path = '<%= Rails.application.routes.url_helpers.blog_category_path %>';
     var blog_category_path_regex = new RegExp(blog_category_path + '?.*');
 
     if (window.document.URL.match(blog_category_path_regex) == null) return;
