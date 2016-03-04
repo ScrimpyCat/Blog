@@ -15,7 +15,7 @@ article {
     text-align: center;
     margin-left: 10%;
     margin-right: 10%;
-    font-family: "Helvetica Neue";
+    font-family: "Helvetica Neue", "Open Sans", sans-serif;
 
     overflow: auto;
     margin-bottom: 5px;
@@ -35,7 +35,18 @@ article header * {
 
 article h1 {
     margin-top: 20px;
+    margin-bottom: 1em;
     font-size: 2.5em;
+}
+
+article h2 {
+    margin-top: 0.83em;
+    margin-bottom: 0.83em;
+    font-size: 1.5em;
+}
+
+article h6 {
+    font-size: 0.67em;
 }
 
 article h1, article h2, article h6 {
@@ -47,6 +58,8 @@ article p, article ul {
     
     margin-left: auto;
     margin-right: auto;
+    margin-top: 1em;
+    margin-bottom: 1em;
     max-width: 800px;
 
     font-weight: 300;
@@ -56,10 +69,18 @@ article pre {
     text-align: left;
     background-color: #34322a;
     overflow: auto;
+    font-family: monospace;
+    margin-top: 1em;
+    margin-bottom: 1em;
+}
+
+article em {
+    font-style: italic;
 }
 
 article a {
     color: #eee;
+    text-decoration: underline;
 }
 
 article a:hover {
@@ -113,6 +134,6 @@ section#series {
 section#series h1 {
     font-weight: 200;
     font-size: 2.5em;
-    font-family: "Helvetica Neue";
+    font-family: "Helvetica Neue", "Open Sans", sans-serif;
     margin: 8px;
 }
