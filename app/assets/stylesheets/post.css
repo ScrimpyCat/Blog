@@ -74,6 +74,10 @@ article pre {
     margin-bottom: 1em;
 }
 
+article code {
+    font-family: monospace;
+}
+
 article em {
     font-style: italic;
 }
