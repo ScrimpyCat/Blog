@@ -6,6 +6,8 @@ series: Engine Development
 tags: [gamedev, optimization, tagged pointers]
 ---
 
+The engine code focused on in this article can be found here: [https://github.com/ScrimpyCat/Blob-Game/tree/master/src/scripting](https://github.com/ScrimpyCat/Blob-Game/tree/master/src/scripting).
+
 Offering scripting in an engine isn't a must, but for an engine written in a language such as C, having a scripting language can provide a lot of benefit. As you can easily allow stuff like hot code reloading, simplify certain actions, offer a more user friendly way to interface with the engine, etc.
 
 Selecting The Language
