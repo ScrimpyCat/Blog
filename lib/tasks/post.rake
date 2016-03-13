@@ -92,4 +92,9 @@ namespace :post do
             puts "Error: Missing filename of the post. #{t}[filename]"
         end
     end
+
+    desc "Get the current timestamp"
+    task :timestamp do |t, args|
+        puts "#{DateTime.now}"
+    end
 end
