@@ -18,10 +18,12 @@ article {
     font-family: "Helvetica Neue", "Open Sans", sans-serif;
 
     overflow: auto;
-    margin-bottom: 5px;
+    margin-bottom: 120px;
     padding-left: 5px;
     padding-right: 5px;
     background-color: #4690c3;
+
+    /*border: 5px solid;*/
 }
 
 article header {
