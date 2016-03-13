@@ -1,0 +1,507 @@
+---
+title: Elixir Metaprogramming
+author: ScrimpyCat
+date: 2016-03-13T16:19:59+11:00
+series: 
+tags: [elixir, metaprogramming]
+---
+
+The metaprogramming and macroing capabilities of Elixir were one of the key features that originally draw me too the language. As someone that was coming from Erlang, many of the attractive features of Elixir were actually features of Erlang. I also didn't mind Erlang's syntax, *though the punctuation can be a little off-putting when beginning,* and actually prefer some of its syntactical choices over Elixir. Such as the syntax used for messaging, functions, and comprehension lists. But luckily Elixir offered many great reasons to pick it up, the macroing system being one of them, the tooling, a more sensible standard library, etc. In this post I thought I'd discuss some of the possible capabilities for metaprogramming within Elixir. 
+
+AST
+---
+
+As Elixir gives you access to the AST (abstract syntax tree) which is conveniently represented using its own data types, it allows for some very powerful metaprogramming capabilities. The AST is structured like so:
+
+```
+:atom #Atoms
+1 #Integers
+1.0 #Floats
+[1, 2] #Lists
+"string" #Strings
+{ key, value } #Two element tuples
+{ atom | tuple, list, list | atom } #Everything else
+```
+
+These AST's can be created through quoting expressions (`quote do: 1 + 2`), manually creating the terms (`{ :+, [], [1, 2] }`), or using the convenience functions provided in the [Macro](http://elixir-lang.org/docs/stable/elixir/Macro.html) module.
+
+While the AST's that have the exact same representation as the type they're representing (quote literals) are easy to understand, the more complex *catch-all* representation is a little more involved. The fields of it can be used to include the operation type, the context data (context, module, line number), and the arguments.
+
+Quoting, Unquoting, Evaluation
+------------------------------
+
+The core operations around working with these AST's comes down to quoting and unquoting expressions, and evaluating those AST's.
+
+Quoting an expression, as mentioned above, will convert a block into its AST representation. This is done using the `quote` function defined in [Kernel.SpecialForms](http://elixir-lang.org/docs/stable/elixir/Kernel.SpecialForms.html#quote/2). Options may optionally be passed to the function to change its behaviour.
+
+```
+iex(1)> quote do: 1 + 2 * 3
+{:+, [context: Elixir, import: Kernel],
+ [1, {:*, [context: Elixir, import: Kernel], [2, 3]}]}
+
+iex(1)> quote do
+...> IO.puts "hello"
+...> IO.puts "world"
+...> end
+{:__block__, [],
+ [{{:., [], [{:__aliases__, [alias: false], [:IO]}, :puts]}, [], ["hello"]},
+  {{:., [], [{:__aliases__, [alias: false], [:IO]}, :puts]}, [], ["world"]}]}
+
+iex(1)> quote do: a + b * c
+{:+, [context: Elixir, import: Kernel],
+ [{:a, [], Elixir},
+  {:*, [context: Elixir, import: Kernel],
+   [{:b, [], Elixir}, {:c, [], Elixir}]}]}
+```
+
+Unquoting an expression allows you to evaluate the current expression and inject its result into the quoted expression. This is done using the `unquote` function defined in [Kernel.SpecialForms](http://elixir-lang.org/docs/stable/elixir/Kernel.SpecialForms.html#unquote/1).
+
+```
+iex(1)> a = 1
+1
+iex(2)> b = 2
+2
+iex(3)> c = 3
+3
+iex(4)> quote do: unquote(a) + unquote(b) * unquote(c)
+{:+, [context: Elixir, import: Kernel],
+ [1, {:*, [context: Elixir, import: Kernel], [2, 3]}]}
+
+iex(1)> quote do: quote do: a
+{:quote, [], [[do: {:a, [], Elixir}]]}
+iex(2)> quote do: unquote(quote do: a)
+{:a, [], Elixir}
+```
+
+Evaluating an AST can be done in a couple of different ways. We can have the AST compiled with our code (the AST will be *injected* into our code), or we can evaluate the AST at runtime and retrieve the result. The former can be achieved using macros, or where the AST represents a valid module `Code.compile_quoted` defined in [Code](http://elixir-lang.org/docs/stable/elixir/Code.html#compile_quoted/2) can be used. While the latter can be achieved using `Code.eval_quoted` defined in [Code](http://elixir-lang.org/docs/stable/elixir/Code.html#eval_quoted/3), where variable bindings and additional options can be provided.
+
+```
+iex(1)> Code.compile_quoted(quote do
+...> defmodule Example do
+...> def hello, do: IO.puts "hello"
+...> end
+...> end)
+[{Example,
+  <<70, 79, 82, 49, 0, 0, 4, 224, 66, 69, 65, 77, 69, 120, 68, 99, 0, 0, 0, 128, 131, 104, 2, 100, 0, 14, 101, 108, 105, 120, 105, 114, 95, 100, 111, 99, 115, 95, 118, 49, 108, 0, 0, 0, 4, 104, 2, 100, 0, ...>>}]
+iex(2)> Example.hello
+hello
+:ok
+
+iex(1)> Code.eval_quoted(quote do: IO.puts "hello")
+hello
+{:ok, []}
+```
+
+Macros
+------
+
+Macros allow for an AST to be injected into the code of the caller. How does this differ from functions? In two ways, it essentially allows us to have code injected at compile-time (this could be new code or constant expressions), and allows for metaprogrammability.
+
+Macros are created in much the same way functions are, with the exception that we use `defmacro` or `defmacrop` instead.
+
+@code:elixir
+{
+defmodule MacroExample do
+    defmacro add(x, y) do #Return the AST to add two values together
+        quote do
+            unquote(x) + unquote(y)
+        end
+    end
+
+    defp add_next(0), do: 0
+    defp add_next(i) when i > 0 do
+        quote do: unquote(add_next(i - 1)) + unquote(i)
+    end
+
+    defmacro sum(count) do #Return the AST to sum n values together
+        add_next(count)
+    end
+
+    defmacro sum_constant(count) do #Return the constant value result for the sum
+        { v, _ } = Code.eval_quoted(add_next(count))
+        v
+    end
+end
+}
+
+In the above example we have defined three different macros: `add/2`, `sum/1`, `sum_constant/1`. The first two will return the AST of the code representing the operation, while the last will evaluate this expression and return the result. The difference here is that after compilation, the first two will only workout the value at runtime, compared to the third which will compile with the value. To have a look at AST being injected when using these functions, we can use the function `Macro.expand_once` defined in [Macro](http://elixir-lang.org/docs/stable/elixir/Macro.html#expand_once/2).
+
+```
+iex(1)> Macro.expand_once(quote(do: MacroExample.add(1,2)), __ENV__)
+{:+, [context: MacroExample, import: Kernel], [1, 2]}
+iex(2)> Macro.expand_once(quote(do: MacroExample.add(1,2)), __ENV__) |> Macro.to_string
+"1 + 2"
+
+iex(1)> Macro.expand_once(quote(do: MacroExample.sum(4)), __ENV__)
+{:+, [context: MacroExample, import: Kernel],
+ [{:+, [context: MacroExample, import: Kernel],
+   [{:+, [context: MacroExample, import: Kernel],
+     [{:+, [context: MacroExample, import: Kernel], [0, 1]}, 2]}, 3]}, 4]}
+iex(2)> Macro.expand_once(quote(do: MacroExample.sum(4)), __ENV__) |> Macro.to_string
+"0 + 1 + 2 + 3 + 4"
+
+iex(1)> Macro.expand_once(quote(do: MacroExample.sum_constant(4)), __ENV__)
+10
+iex(2)> Macro.expand_once(quote(do: MacroExample.sum_constant(4)), __ENV__) |> Macro.to_string
+"10"
+```
+
+Manipulating The AST
+--------------------
+
+One of the important features that allows for powerful metaprogramming capabilities is the ability to modify the AST directly. This is showcased somewhat with the previous functions by creating AST's from inputs. But can be taken even further, as we can traverse and manipulate the AST further if we wish. A simple example could be something like the following:
+
+```
+iex(1)> {:+,ctx,[v1,v2]} = quote do: 1 + 2
+{:+, [context: Elixir, import: Kernel], [1, 2]}
+iex(2)> Code.eval_quoted({:+,ctx,[v1 * 10, v2 * 5]})
+{20, []}
+```
+
+More complicated examples could be as a restructuring pipeline, or an optimization step. There's many possibilities here for what you can do, as you're given to the flexibility to manipulate as you see fit to solve your current problem.
+
+Techniques For Metaprogramming
+------------------------------
+
+There's a few different strategies that can be used for metaprogramming. One of which is using macros literally, where they return the AST and inject it into the code using them (as shown in an above example). Another is using an external file/non-valid elixir terms to generate an AST from. The last is to use macros to configure behaviours that the AST will later be generated from.
+
+An example for the file/non-valid elixir terms can be seen with how Elixir supports Unicode characters. This is where you may have data in a format other than standard Elixir terms, and use that information to generate the code.
+
+@code:elixir
+{
+defmacro conditions(input, list) do
+    quote do
+        cond do
+            unquote(Enum.map(list, fn { result, match } -> 
+                [condition] = quote do
+                    unquote(input) =~ unquote(match) -> unquote(result)
+                end
+                condition
+            end))
+        end
+    end
+end
+
+@input """
+integer: ^[+-]?\\d*$
+float:   ^[+-]?\\d*\\.?\\d*$
+string:  ^".*"$
+"""
+def get_type(string) when is_bitstring(string) do
+    conditions(string, unquote(Macro.escape(String.split(@input, "\n", trim: true) |> Enum.map(fn s ->
+        [type, match] = String.split(s, ":", parts: 2)
+        { String.to_atom(String.strip(type)), Regex.compile!(String.strip(match)) }
+    end))))
+end
+
+#Generates this function:
+#def get_type(string) when is_bitstring(string) do
+#    cond do
+#        string =~ ~r/^[+-]?\d*$/ -> :integer
+#        string =~ ~r/^[+-]?\d*\.?\d*$/ -> :float
+#        string =~ ~r/^".*"$/ -> :string
+#    end
+#end
+}
+
+Using macros for configuration is another powerful technique. As this allows for the code generation step to be deferred, after all of the inputs have been initialized. There are a few important features in achieving this: module attributes, the `__using__/1` macro described in [Kernel](http://elixir-lang.org/docs/stable/elixir/Kernel.html#use/2), and the `__before_compile__/1` macro described in [Module](http://elixir-lang.org/docs/stable/elixir/Module.html). An example for using macros for configuration can be seen in the [Plug library](https://github.com/elixir-lang/plug).
+
+@code:elixir
+{
+defmodule Matcher do
+    defmacro __using__(_options) do
+        quote do
+            import Matcher
+
+            @before_compile unquote(__MODULE__)
+            @matches []
+        end
+    end
+
+    defmacro __before_compile__(env) do
+        quote do
+            def get_type(string) when is_bitstring(string) do
+                cond do
+                    unquote(Enum.map(Enum.reverse(Module.get_attribute(env.module, :matches)), fn { result, match } -> 
+                        [condition] = quote do
+                            string =~ unquote(match) -> unquote(result)
+                        end
+                        condition
+                    end))
+                end
+            end
+        end
+    end
+
+    defmacro match([condition]) do
+        quote do
+            @matches [unquote(Macro.escape(condition))|@matches]
+        end
+    end
+end
+
+defmodule TypeMatcher do
+    use Matcher
+    
+    match integer: ~r/^[+-]?\d*$/
+    match float: ~r/^[+-]?\d*\.?\d*$/
+    match string: ~r/^".*"$/
+end
+}
+
+This last technique is very convenient for building DSLs within Elixir. A more fleshed out example can be seen in my binary parser/loader DSL [Tonic](https://github.com/ScrimpyCat/Tonic). Below is an example of the DSL.
+
+@code:elixir
+{
+#Example PNG loader (parses a few different chunks)
+defmodule PNG do
+    use Tonic
+
+    endian :big
+    repeat :magic, 8, :uint8
+    repeat :chunks do
+        uint32 :length
+        string :type, length: 4
+        chunk get(:length) do
+            on get(:type) do
+                "IHDR" ->
+                    uint32 :width
+                    uint32 :height
+                    uint8 :bit_depth
+                    uint8 :colour_type
+                    uint8 :compression_type
+                    uint8 :filter_method
+                    uint8 :interlace_method
+                "gAMA" ->
+                    uint32 :gamma, fn { name, value } -> { name, value / 100000 } end
+                "cHRM" ->
+                    group :white_point do
+                        uint32 :x, fn { name, value } -> { name, value / 100000 } end
+                        uint32 :y, fn { name, value } -> { name, value / 100000 } end
+                    end
+                    group :red do
+                        uint32 :x, fn { name, value } -> { name, value / 100000 } end
+                        uint32 :y, fn { name, value } -> { name, value / 100000 } end
+                    end
+                    group :green do
+                        uint32 :x, fn { name, value } -> { name, value / 100000 } end
+                        uint32 :y, fn { name, value } -> { name, value / 100000 } end
+                    end
+                    group :blue do
+                        uint32 :x, fn { name, value } -> { name, value / 100000 } end
+                        uint32 :y, fn { name, value } -> { name, value / 100000 } end
+                    end
+                "iTXt" ->
+                    string :keyword, ?\0
+                    string :text
+                _ -> repeat :uint8
+            end
+        end
+        uint32 :crc
+    end
+end
+
+#Example load result:
+#{{:magic, [137, 80, 78, 71, 13, 10, 26, 10]},
+# {:chunks,
+#  [{{:length, 13}, {:type, "IHDR"}, {:width, 48}, {:height, 40},
+#    {:bit_depth, 8}, {:colour_type, 6}, {:compression_type, 0},
+#    {:filter_method, 0}, {:interlace_method, 0}, {:crc, 3095886193}},
+#   {{:length, 4}, {:type, "gAMA"}, {:gamma, 0.45455}, {:crc, 201089285}},
+#   {{:length, 32}, {:type, "cHRM"}, {:white_point, {:x, 0.3127}, {:y, 0.329}},
+#    {:red, {:x, 0.64}, {:y, 0.33}}, {:green, {:x, 0.3}, {:y, 0.6}},
+#    {:blue, {:x, 0.15}, {:y, 0.06}}, {:crc, 2629456188}},
+#   {{:length, 345}, {:type, "iTXt"}, {:keyword, "XML:com.adobe.xmp"},
+#    {:text,
+#     <<0, 0, 0, 0, 60, 120, 58, 120, 109, 112, 109, 101, 116, 97, 32, 120, 109, 108, 110, 115, 58, 120, 61, 34, 97, 100, 111, 98, 101, 58, 110, 115, 58, 109, 101, 116, 97, 47, 34, ...>>},
+#    {:crc, 1287792473}},
+#   {{:length, 1638}, {:type, "IDAT"},
+#    [88, 9, 237, 216, 73, 143, 85, 69, 24, 198, 241, 11, 125, 26, 68, 148, 25,
+#     109, 4, 154, 102, 114, 192, 149, 70, 137, 137, 209, 152, 152, 24, 19, 190,
+#     131, 75, 22, 234, 55, 224, 59, ...], {:crc, 2269121590}},
+#   {{:length, 0}, {:type, "IEND"}, [], {:crc, 2923585666}}]}}
+}
+
+The code generated by the above example will be:
+
+@code:elixir
+{
+(
+  def(load(currently_loaded, data, name, endian)) do
+    loaded = {}
+    scope = []
+    endian = :big
+    {value, data} = repeater(&load_repeat_magic_5_0/4, 8, [scope | currently_loaded], data, :magic, endian, fn {name, value} -> {name, Enum.map(value, fn {i} -> i end)} end)
+    loaded = :erlang.append_element(loaded, value)
+    scope = [var_entry(:magic, value) | scope]
+    {value, data} = repeater(&load_repeat_chunks_6_1/4, fn _ -> false end, [scope | currently_loaded], data, :chunks, endian)
+    loaded = :erlang.append_element(loaded, value)
+    scope = [var_entry(:chunks, value) | scope]
+    {loaded, data}
+  end
+  def(load_group_blue_34_8(currently_loaded, data, name, endian)) do
+    loaded = {name}
+    scope = []
+    {value, data} = callback(uint32([scope | currently_loaded], data, :x, endian), fn {name, value} -> {name, value / 100000} end)
+    loaded = :erlang.append_element(loaded, value)
+    scope = [var_entry(:x, value) | scope]
+    {value, data} = callback(uint32([scope | currently_loaded], data, :y, endian), fn {name, value} -> {name, value / 100000} end)
+    loaded = :erlang.append_element(loaded, value)
+    scope = [var_entry(:y, value) | scope]
+    {loaded, data}
+  end
+  def(load_group_green_30_7(currently_loaded, data, name, endian)) do
+    loaded = {name}
+    scope = []
+    {value, data} = callback(uint32([scope | currently_loaded], data, :x, endian), fn {name, value} -> {name, value / 100000} end)
+    loaded = :erlang.append_element(loaded, value)
+    scope = [var_entry(:x, value) | scope]
+    {value, data} = callback(uint32([scope | currently_loaded], data, :y, endian), fn {name, value} -> {name, value / 100000} end)
+    loaded = :erlang.append_element(loaded, value)
+    scope = [var_entry(:y, value) | scope]
+    {loaded, data}
+  end
+  def(load_group_red_26_6(currently_loaded, data, name, endian)) do
+    loaded = {name}
+    scope = []
+    {value, data} = callback(uint32([scope | currently_loaded], data, :x, endian), fn {name, value} -> {name, value / 100000} end)
+    loaded = :erlang.append_element(loaded, value)
+    scope = [var_entry(:x, value) | scope]
+    {value, data} = callback(uint32([scope | currently_loaded], data, :y, endian), fn {name, value} -> {name, value / 100000} end)
+    loaded = :erlang.append_element(loaded, value)
+    scope = [var_entry(:y, value) | scope]
+    {loaded, data}
+  end
+  def(load_group_white_point_22_5(currently_loaded, data, name, endian)) do
+    loaded = {name}
+    scope = []
+    {value, data} = callback(uint32([scope | currently_loaded], data, :x, endian), fn {name, value} -> {name, value / 100000} end)
+    loaded = :erlang.append_element(loaded, value)
+    scope = [var_entry(:x, value) | scope]
+    {value, data} = callback(uint32([scope | currently_loaded], data, :y, endian), fn {name, value} -> {name, value / 100000} end)
+    loaded = :erlang.append_element(loaded, value)
+    scope = [var_entry(:y, value) | scope]
+    {loaded, data}
+  end
+  def(load_repeat___tonic_anon___41_11(currently_loaded, data, name, endian)) do
+    loaded = {}
+    scope = []
+    {value, data} = callback(uint8([scope | currently_loaded], data, nil, endian), fn {_, value} -> value end)
+    loaded = :erlang.append_element(loaded, value)
+    scope = [var_entry(nil, value) | scope]
+    {loaded, data}
+  end
+  def(load_repeat_chunks_6_1(currently_loaded, data, name, endian)) do
+    loaded = {}
+    scope = []
+    {value, data} = uint32([scope | currently_loaded], data, :length, endian)
+    loaded = :erlang.append_element(loaded, value)
+    scope = [var_entry(:length, value) | scope]
+    {value, data} = repeater(&load_repeat_type_8_2/4, 4, [scope | currently_loaded], data, :type, endian, &convert_to_string/1)
+    loaded = :erlang.append_element(loaded, value)
+    scope = [var_entry(:type, value) | scope]
+    (
+      size = get_value([scope | currently_loaded], :length)
+      next_data3 = binary_part(data, size, byte_size(data) - size)
+      data = binary_part(data, 0, size)
+    )
+    (
+      case(get_value([scope | currently_loaded], :type)) do
+        "IHDR" ->
+          {value, data} = uint32([scope | currently_loaded], data, :width, endian)
+          loaded = :erlang.append_element(loaded, value)
+          scope = [var_entry(:width, value) | scope]
+          {value, data} = uint32([scope | currently_loaded], data, :height, endian)
+          loaded = :erlang.append_element(loaded, value)
+          scope = [var_entry(:height, value) | scope]
+          {value, data} = uint8([scope | currently_loaded], data, :bit_depth, endian)
+          loaded = :erlang.append_element(loaded, value)
+          scope = [var_entry(:bit_depth, value) | scope]
+          {value, data} = uint8([scope | currently_loaded], data, :colour_type, endian)
+          loaded = :erlang.append_element(loaded, value)
+          scope = [var_entry(:colour_type, value) | scope]
+          {value, data} = uint8([scope | currently_loaded], data, :compression_type, endian)
+          loaded = :erlang.append_element(loaded, value)
+          scope = [var_entry(:compression_type, value) | scope]
+          {value, data} = uint8([scope | currently_loaded], data, :filter_method, endian)
+          loaded = :erlang.append_element(loaded, value)
+          scope = [var_entry(:filter_method, value) | scope]
+          {value, data} = uint8([scope | currently_loaded], data, :interlace_method, endian)
+          loaded = :erlang.append_element(loaded, value)
+          scope = [var_entry(:interlace_method, value) | scope]
+        "gAMA" ->
+          {value, data} = callback(uint32([scope | currently_loaded], data, :gamma, endian), fn {name, value} -> {name, value / 100000} end)
+          loaded = :erlang.append_element(loaded, value)
+          scope = [var_entry(:gamma, value) | scope]
+        "cHRM" ->
+          {value, data} = load_group_white_point_22_5([scope | currently_loaded], data, :white_point, endian)
+          loaded = :erlang.append_element(loaded, value)
+          scope = [var_entry(:white_point, value) | scope]
+          {value, data} = load_group_red_26_6([scope | currently_loaded], data, :red, endian)
+          loaded = :erlang.append_element(loaded, value)
+          scope = [var_entry(:red, value) | scope]
+          {value, data} = load_group_green_30_7([scope | currently_loaded], data, :green, endian)
+          loaded = :erlang.append_element(loaded, value)
+          scope = [var_entry(:green, value) | scope]
+          {value, data} = load_group_blue_34_8([scope | currently_loaded], data, :blue, endian)
+          loaded = :erlang.append_element(loaded, value)
+          scope = [var_entry(:blue, value) | scope]
+        "iTXt" ->
+          {value, data} = repeater(&load_repeat_keyword_39_9/4, fn [{c} | _] -> c == 0 end, [scope | currently_loaded], data, :keyword, endian, &convert_to_string_without_last_byte/1)
+          loaded = :erlang.append_element(loaded, value)
+          scope = [var_entry(:keyword, value) | scope]
+          {value, data} = repeater(&load_repeat_text_40_10/4, fn _ -> false end, [scope | currently_loaded], data, :text, endian, &convert_to_string/1)
+          loaded = :erlang.append_element(loaded, value)
+          scope = [var_entry(:text, value) | scope]
+        _ ->
+          {value, data} = repeater(&load_repeat___tonic_anon___41_11/4, fn _ -> false end, [scope | currently_loaded], data, :__tonic_anon__, endian, fn {_, value} -> Enum.map(value, fn {i} -> i end) end)
+          loaded = :erlang.append_element(loaded, value)
+          scope = [var_entry(:__tonic_anon__, value) | scope]
+      end
+      {loaded, scope, data}
+    )
+    data = next_data3
+    {value, data} = uint32([scope | currently_loaded], data, :crc, endian)
+    loaded = :erlang.append_element(loaded, value)
+    scope = [var_entry(:crc, value) | scope]
+    {loaded, data}
+  end
+  def(load_repeat_keyword_39_9(currently_loaded, data, name, endian)) do
+    loaded = {}
+    scope = []
+    {value, data} = callback(uint8([scope | currently_loaded], data, nil, endian), fn {_, value} -> value end)
+    loaded = :erlang.append_element(loaded, value)
+    scope = [var_entry(nil, value) | scope]
+    {loaded, data}
+  end
+  def(load_repeat_magic_5_0(currently_loaded, data, name, endian)) do
+    loaded = {}
+    scope = []
+    {value, data} = callback(uint8([scope | currently_loaded], data, nil, endian), fn {_, value} -> value end)
+    loaded = :erlang.append_element(loaded, value)
+    scope = [var_entry(nil, value) | scope]
+    {loaded, data}
+  end
+  def(load_repeat_text_40_10(currently_loaded, data, name, endian)) do
+    loaded = {}
+    scope = []
+    {value, data} = callback(uint8([scope | currently_loaded], data, nil, endian), fn {_, value} -> value end)
+    loaded = :erlang.append_element(loaded, value)
+    scope = [var_entry(nil, value) | scope]
+    {loaded, data}
+  end
+  def(load_repeat_type_8_2(currently_loaded, data, name, endian)) do
+    loaded = {}
+    scope = []
+    {value, data} = callback(uint8([scope | currently_loaded], data, nil, endian), fn {_, value} -> value end)
+    loaded = :erlang.append_element(loaded, value)
+    scope = [var_entry(nil, value) | scope]
+    {loaded, data}
+  end
+)
+}
+
+Possibilities
+-------------
+
+As can be seen, using these different constructs allows for some very powerful metaprogramming capabilities within Elixir. Some of the possibilities are reducing large amounts of boilerplate code, restructuring pipelines, post-optimizations, ease of creating custom DSLs both within the syntax itself or out of new syntax and converting it to Elixir.
