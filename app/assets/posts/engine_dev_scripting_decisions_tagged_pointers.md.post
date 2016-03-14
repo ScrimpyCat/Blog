@@ -233,7 +233,7 @@ float IntRepToFloat(uint32_t v)
 
 The caveats of this approach however are it requires additional processing, whereas the other approaches only involve a few operations to repair the float. And in this particular example, it's not making effective use of all the bits we have available. As the floating point precision of the 5 decimal places become less effective the larger the value becomes. In other words, not all the bits will represent a unique floating point value.
 
-What approach I'll change over to is still to be determined, as I'm not too sure what values be used the most. There are some likely attributes I'd want. Will definitely want to support a range from 0.0 - 1.0 (including negative), as well as larger values, probably capping off around the 140 exponent value. Some things that's unlikely to be needed (or won't be a common occurrence) will be infinite values, NaN's, denormals, and as mentioned very large values.
+What approach I'll change over to is still to be determined, as I'm not too sure what values will be used the most. There are some likely attributes I'd want. Will definitely want to support a range from 0.0 - 1.0 (including negative), as well as larger values, probably capping off around the 140 exponent value. Some things that's unlikely to be needed (or won't be a common occurrence) will be infinite values, NaN's, denormals, and as mentioned very large values.
 
 Atoms
 -----
