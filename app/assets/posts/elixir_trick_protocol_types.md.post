@@ -1,0 +1,116 @@
+---
+title: "Elixir: Implementing Protocols For Specific Values"
+author: ScrimpyCat
+date: 2016-04-02T22:41:59+11:00
+series: 
+tags: elixir
+---
+
+I recently came across a problem, I wanted to use protocols to provide overrideable functionality for my data. The data consists of basic Elixir terms such as strings, tuples, lists. And the ideal solution I was looking for would allow me to provide functions for the different variations of these datatypes I was expecting, but giving me the ability to override any specific one of these variations (or adding a new variation) without having to redefine all the other functions for the other variations just because they're of the same type.
+
+@code:elixir
+{
+defprotocol Styler do
+    @fallback_to_any true
+
+    @type colour :: :default | :red | :green | :blue
+
+    @spec format(Any) :: { colour, Any }
+    def format(input)
+end
+
+defimpl Styler, for: Any do
+    def format(input), do: { :default, input }
+end
+
+defimpl Styler, for: Integer do
+    def format(input) when input < 0, do: { :red, input }
+    def format(input), do: { :default, input }
+end
+
+#Somewhere else we decide we want: 0 => { :blue, 0 }
+defimpl Styler, for: Integer do
+    def format(0), do: { :blue, 0 }
+end
+}
+
+As Elixir only allows implementations to set the behaviour for a single type, this means the re-implementation for the Integer type will cause the previous defintions to be lost. And so doing either `Styler.format(1)` or `Styler.format(-1)` will not have a matching function and will cause an error. This behaviour is fine for typical usage, but when we want more specific control this becomes a problem. Since if we wanted it to work we would need to then add the previously defined functions in this new implementation. The only type Elixir allows more specific control of is structs, as you're able to create a new implementation for each struct without impacting the implementations of other structs.
+
+Structs To The Rescue!
+----------------------
+
+So let's do that, lets use different structs in-place of these specific values. So we can customize the behaviour for specific values, without affecting those already defined.
+
+@code:elixir
+{
+defmodule Styler.Type.Integer.Zero do
+    defstruct input: 0
+end
+
+defmodule Styler.Type.Integer.Positive do
+    defstruct input: 1
+end
+
+#...
+}
+
+Ok that isn't going to work if we have lots of values we want to make structs for. What it we wanted to access every individual integer separately? Yeh, it's definitely not the right way to go about it.
+
+Because of the metaprogramming capabilities in Elixir, one possible solution would be to generate the structs for the expected inputs. This could work fine, but we're now polluting the VM with potentially lots of modules, that we only need for this hack. That seems kind of ugly. Hmm, well structs are maps, what if we do something with that.
+
+Maps To The Rescue!
+-------------------
+
+As you're probably aware, structs are just maps with an additional member `__struct__`, which contains the struct type (module). Defining a struct does do a few additional things such as creating a module (the module that defines the struct), and creating a struct function for default values and lookup. But we don't want any of that other stuff, we only need a map that looks like a struct so our protocol implementations can be applied separately.
+
+@code:elixir
+{
+defimpl Styler, for: Any do
+    def format(%{ __struct__: _, input: input }), do: { :default, input }
+    def format(input), do: { :default, input }
+end
+
+defimpl Styler, for: Integer do
+    def format(0), do: Styler.format(%{ __struct__: String.to_atom("Elixir.Styler.Type.Integer.0"), input: 0 })
+    def format(input) when input < 0, do: Styler.format(%{ __struct__: String.to_atom("Elixir.Styler.Type.Integer.Negative"), input: input })
+    def format(input), do: Styler.format(%{ __struct__: String.to_atom("Elixir.Styler.Type.Integer.Positive"), input: input })
+end
+
+defimpl Styler, for: Styler.Type.Integer.Positive do
+    def format(%{ input: input }), do: Styler.format(%{ __struct__: String.to_atom("Elixir.Styler.Type.Integer.Positive." <> to_string(input)), input: input })
+end
+
+defimpl Styler, for: Styler.Type.Integer.Negative do
+    def format(%{ input: input }), do: Styler.format(%{ __struct__: String.to_atom("Elixir.Styler.Type.Integer.Negative." <> to_string(input)), input: input })
+end
+
+#Override the behaviours
+defimpl Styler, for: Styler.Type.Integer.Negative do
+    def format(%{ input: input }), do: { :red, input }
+end
+
+defimpl Styler, for: :"Elixir.Styler.Type.Integer.0" do
+    def format(_), do: { :blue, 0 }
+end
+
+defimpl Styler, for: :"Elixir.Styler.Type.Integer.Positive.1" do
+    def format(_), do: { :green, 1 }
+end
+
+# iex(1)> Styler.format -2
+# {:red, -2}
+# iex(2)> Styler.format -1
+# {:red, -1}
+# iex(3)> Styler.format 0 
+# {:blue, 0}
+# iex(4)> Styler.format 1
+# {:green, 1}
+# iex(5)> Styler.format 2
+# {:default, 2}
+}
+
+This technique can be applied in a variety of ways depending on how you want to separate values. There are some gotchas to this approach however.
+
+* You cannot, _and really should not,_ be using these as actual structs because you're only creating maps that look like structs and not actual structs, so there's certain functionality that will not work because structs are expected to have some additional features (such as being a module, and module that defines the struct functions).
+* As protocols are a concept in Elixir and not Erlang (as are structs), you need to make sure you're prefixing your struct atoms with `"Elixir."`.
+* Take careful consideration when designing the format your structs will take, as you don't want it to break other implementations you may want to make.
