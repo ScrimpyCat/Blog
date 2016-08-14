@@ -1,0 +1,115 @@
+---
+title: "Engine Dev: Better Scripting"
+author: ScrimpyCat
+date: 2016-08-14T10:16:39+10:00
+series: Engine Development
+tags: [gamedev, editor, optimization]
+---
+
+Scripting in the engine was feeling very much like a hacked on solution. [_Which it actually was_](/engine-dev-scripting-decisions-and-tagged-pointers). The biggest concern was now that the language was slowly getting bigger and bigger (more and more API exposed to it), it started becoming more obvious that down the road the language would start to become more difficult to use without having to frequently look up the documentation.
+
+Editors
+-------
+
+Up to that point I was using my text editor and simply marking the source as Scheme. While this provided some nice syntax highlighting, it missed out on exposing any of the APIs or potentially helpful auto-completions for the language. To solve this I decided to create a better editing environment. This meant having helpful docs, syntax highlighting designed for the language, and context/API aware auto-completions.
+
+So I went about creating an [Atom package](https://github.com/ScrimpyCat/language-blob) that would provide these things. To accommodate a changing API I structured it by making the auto-completer lookup API spec definitions. These are JSON files specifying the definition of the API available (functions, options, state, enums, inputs). [An example of these files can be found here](https://github.com/ScrimpyCat/Blob-Game/blob/master/src/scripting/evaluators/io.json). This not only made it simple to add or change API definitions over time, but it also opens up the possibility for non-Engine API to be added (user's adding their own custom API spec definitions).
+
+![auto-complete](https://cloud.githubusercontent.com/assets/3411736/15416385/1eb28fd8-1e8e-11e6-9277-1fd19f7d3f54.gif)
+
+The auto-completion portion of the package provided support for some other useful behaviours. Such as providing suggestions for locally defined state or enums, in addition to inferring their type definition and using that to provide more useful auto-completions.
+
+![type-inference](https://cloud.githubusercontent.com/assets/3411736/15416591/6e0fbfcc-1e90-11e6-90af-f5713a53f183.gif)
+
+Now this probably seems fairly obvious, however I still think this approach is worth presenting. Since even if you're developing a game with a standard scripting language (e.g. Lua, Javascript, Python, Scheme, etc.), because you're often exposing additional API to those languages from your engine's core language. This means that unless you're using something like FFI bindings or something else that your editor may be aware of (infer these hidden API declarations from), then you're most likely going to find that the functionality you're exposing to the language is not presented to you in your editor.
+
+While this might not feel like a huge problem, going the extra lengths to enable these capabilities I've found to be well worth the effort. In a previous game engine I worked on, I sorely regret not doing something like this. As at the time I was complacent with simply referring to my docs, and using the standard auto-completions the editor provided for me because I was using Javascript. But looking back I realize just how much time I wasted frequenting the docs.
+
+Improvements
+------------
+
+Aside from the editing experience, other improvements were made to the language. These consisted of defining strict naming conventions, and optimizing the execution of the scripts. However the aim with any of these improvements was to not come at a cost of making the scripting language itself more complicated.
+
+Naming Conventions
+------------------
+
+Due to the language being very flexible, it didn't take long before I ran across the problem of naming collisions. Having state using the same name as a function, or an optional argument in a function having the same name as some state, etc. This simplest way to get around this was to define some strict naming rules to indicate what type of atom is being used. The new naming rules defined:
+
+* Atom - Any name or symbol that is prefixed by `':'`.
+* Option - Any name or symbol that is suffixed by `':'`.
+* State - Any name or symbol that is prefixed by `'.'`.
+* Input - Any name or symbol that is prefixed by `'@'`.
+* Enum - Any name or symbol that is prefixed by `'&'`.
+* Function - Any name or symbol without one of the aforementioned prefixes/suffixes.
+
+The additional benefit of applying these strict naming rules is we can now optimize the evaluation of these expressions, as we no longer need to find out what type it is. The type can instead be inferred directly from the prefix/suffix being used. In other words a state reference now simply looks up it's state, the evaluator doesn't try to test if it is a function.
+
+Lookups
+-------
+
+As the original implementation just went about looking up functions and state very naively (string comparison in array), and this was one thing that I knew would have a detrimental effect on performance. The time arrived that it needed to be optimized, and became one of the key areas to focus on. 
+
+The most obvious improvement to make was to use hash maps for the actual lookup operation. Especially as function registration is very infrequent, while actual lookup happens all the time. While to be expected this had a noticeable improvement, there was still much room for improvement. So the next glaring issue turned out to be hashing of strings.
+
+As most strings are small and so take the form of one of the tagged string variants, this also created the problem of not being able to cache the hash value. So to alleviate this I implemented a global cache for tagged string hashes. This had the benefit of not only improving scripting performance but the performance of strings throughout the engine.
+
+The next improvement was to remove the need for the repeated lookups. This was done by making the tagged atom expression for a function type, actually be an index reference to its function. So lookup then became simply a shift and array index. This could've been taken a step further by completely eliminating the need for any kind of lookup by storing the function pointer itself in the tagged type rather than an index to that function pointer. However this would have meant we need to make guarantees about the layout in memory that function's can reside, which I didn't want to make.
+
+Constant Lists
+--------------
+
+One redundant operation that was identified was evaluating lists. The reason this was a problem was because every time a list was evaluated, it would return a copy of that list. To fix this, there is now a check to determine if a list is constant (contains only constant elements), which can be determined at parsing time as well as runtime. And if it is we only need to return a reference to that list instead of requiring a copy and all of its elements to be evaluated too.
+
+State Invalidators
+------------------
+
+While all the improvements helped, there was still one underlying flaw that had the biggest implication in terms of performance. Due to the language not having any real sense of imperativeness, and to keep to simple and behaviours relative to each other. This meant that a lot of logic went into state values (all the quoted expressions you'd see). The reason this was so bad was because if one state depended on the value of another state, and that state depends on the value of two other states, etc. You ended up having huge amounts of state being re-evaluated every time another state was referenced.
+
+This was such a big problem in-fact that rendering only 25 GUI sliders was causing a ~75% performance hit on my slow machine. While the solution was obvious, the unnecessary repeated evaluations of state needed to stop. Coming up with a fix that didn't hurt the clarity of the scripts, nor was going to require a big programming effort on my part was not so easy.
+
+Thinking about when state actually needed to be re-evaluated, such as every reference, once per frame, on window resize, etc. Led me to the solution of associating invalidators with state. These invalidators are expressions that are evaluated every time a state is referenced to determine if the state's value needs to be re-evaluated or not. Now this does move the actual problem over to the invalidators, since there will be repeated redundant invalidator evaluation now. It is still loads better than what it was.
+
+This is now what the current state of the scripting looks like:
+
+@code:scheme
+{
+(gui "gui-button"
+    (enum!
+        "&normal"
+        "&highlighted"
+        "&pushed"
+    )
+
+    (state! ".colour" (255 211 73) (invalidate: (quote (frame-changed?))))
+    (state! ".radius" (quote (/ 8.0 (max .width .height))) (invalidate: (quote (frame-changed?))))
+    (state! ".outline" 0 (invalidate: (quote (frame-changed?))))
+    (state! ".outline-colour" (quote (darken .colour 5)) (invalidate: (quote (frame-changed?))))
+    (state! ".status" &normal)
+    (state! ".label" (quote (
+        (quote (render-rect .rect .colour (radius: .radius) (outline: .outline .outline-colour)))  ; &normal
+        (quote (render-rect .rect (lighten .colour 5) (radius: .radius) (outline: .outline (lighten .outline-colour 5)))) ; &highlighted
+        (quote (render-rect .rect (darken .colour 5) (radius: .radius) (outline: .outline (darken .outline-colour 5))))  ; &pushed
+    )) (invalidate: (quote (frame-changed?))))
+    (state! ".on-click" (quote (print "Clicked!")))
+    (state! ".inside" #f)
+    (state! ".dragged" #f)
+
+    (render:
+        (unquote (get .status .label))
+    )
+
+    (control:
+        (on (click: :left .rect)
+            (if @press
+                ((.status! &pushed) (.inside! #t) (.dragged! #t))
+                ((.status! &highlighted) (if .inside .on-click) (.inside! #f) (.dragged! #f))
+            )
+            ((.status! &normal) (.inside! #f) (.dragged! @press))
+        )
+        (if .dragged
+            (if .inside (on (cursor: .rect) (.status! &pushed) (.status! &highlighted)))
+            (on (cursor: .rect) (.status! &highlighted) (.status! &normal))
+        )
+    )
+)
+}
