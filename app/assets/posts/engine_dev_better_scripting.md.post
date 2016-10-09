@@ -63,7 +63,7 @@ One redundant operation that was identified was evaluating lists. The reason thi
 State Invalidators
 ------------------
 
-While all the improvements helped, there was still one underlying flaw that had the biggest implication in terms of performance. Due to the language not having any real sense of imperativeness, and to keep to simple and behaviours relative to each other. This meant that a lot of logic went into state values (all the quoted expressions you'd see). The reason this was so bad was because if one state depended on the value of another state, and that state depends on the value of two other states, etc. You ended up having huge amounts of state being re-evaluated every time another state was referenced.
+While all the improvements helped, there was still one underlying flaw that had the biggest implication in terms of performance. State values would often contain a lot of logic instead of being constant values (all the quoted expressions you'd see, this essentially allows you to achieve a reactive based flow). The reason this was so bad was because if one state depended on the value of another state, and that state depends on the value of two other states, etc. You ended up having huge amounts of state being re-evaluated every time another state was referenced.
 
 This was such a big problem in-fact that rendering only 25 GUI sliders was causing a ~75% performance hit on my slow machine. While the solution was obvious, the unnecessary repeated evaluations of state needed to stop. Coming up with a fix that didn't hurt the clarity of the scripts, nor was going to require a big programming effort on my part was not so easy.
 

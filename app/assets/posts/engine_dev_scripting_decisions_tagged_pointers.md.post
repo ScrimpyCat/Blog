@@ -159,7 +159,7 @@ xxxxxxxx xxxxxxxx xxxxxxxx xxxvvvvv vvvvvvvv vvvvvvvv vvvvvvvv vvv01100 : value 
 Floats
 ------
 
-Like integers, with float's being binary32's, the 64 bit implementation is trivial. However deciding how to handle it on 32 bit platforms becomes a little trickier. While I just took a naive approach by reducing the precision of the mantissa, so tagged floats are any that can be represented why 1 signed bit, 8 exponent bits, and only 18 (instead of 23) mantissa bits. While this is trivial and fast, it leaves a lot to be desired as it is not an effective distribution of values.
+Like integers, with float's being binary32's, the 64 bit implementation is trivial. However deciding how to handle it on 32 bit platforms becomes a little trickier. While I just took a naive approach by reducing the precision of the mantissa, so tagged floats are any that can be represented with 1 signed bit, 8 exponent bits, and only 18 (instead of 23) mantissa bits. While this is trivial and fast, it leaves a lot to be desired as it is not an effective distribution of values.
 
 One approach could be reducing the precision of the exponent, however with 5 bits being used up, reducing the exponent down to 3 bits does not allow for a very big range of values. One obvious range might be to use it around 127 to 134 (127 + 7 bit value). This would give us full binary32 precision from the ranges of 1.0e+00 up to 256.0e+02 (and their negatives). Or if wanting to include some of the lower range, using 123 to 130 might be a good range. This would give the full range of precision for values in the ranges of 6.25e-02 up to 1.6e+01 (and their negatives). But trying to include more of the lower range starts to become more problematic, as the precision starts to grow.
 
