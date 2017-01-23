@@ -6,7 +6,7 @@ series: Engine Development
 tags: [gamedev, optimization, tagged pointers]
 ---
 
-The engine code focused on in this article can be found here: [https://github.com/ScrimpyCat/Blob-Game/tree/master/src/scripting](https://github.com/ScrimpyCat/Blob-Game/tree/master/src/scripting).
+The engine code focused on in this article can be found here: [https://github.com/ScrimpyCat/CommonGameKit/tree/master/src/scripting](https://github.com/ScrimpyCat/CommonGameKit/tree/master/src/scripting).
 
 Offering scripting in an engine isn't a must, but for an engine written in a language such as C, having a scripting language can provide a lot of benefit. As you can easily allow stuff like hot code reloading, simplify certain actions, offer a more user friendly way to interface with the engine, etc.
 
@@ -15,12 +15,12 @@ Selecting The Language
 
 In the past I've used Javascript, JSCocoa (extended with some of my own modifications), a visual node-based language. While these were all fine options, I wanted something a little different out of this scripting language.
 
-I had been spending a lot of time with Elixir and a key interest of mine with the language (coming from Erlang) was its macro system. Being able to access the AST and manipulate it however you like, in the language itself. This led me to learning about homoiconicity (Elixir isn't homoiconic however) where the language itself is also its data, such as with languages like Lisp or Scheme. While homoiconicity for the purpose of metaprogramming was not of concern for how I saw its use in the engine, the fact that the language is also the structure of its data is what made it an attractive concept. 
+I had been spending a lot of time with Elixir and a key interest of mine with the language (coming from Erlang) was its macro system. Being able to access the AST and manipulate it however you like, in the language itself. This led me to learning about homoiconicity (Elixir isn't homoiconic however) where the language itself is also its data, such as with languages like Lisp or Scheme. While homoiconicity for the purpose of metaprogramming was not of concern for how I saw its use in the engine, the fact that the language is also the structure of its data is what made it an attractive concept.
 
 One Syntax For All The Things!
 ------------------------------
 
-The thought of being able to use the same syntax for custom data formats (in-place of where you might have used XML, some other markup language, or even rolled some custom structure in the past) and for the scripts, was a tempting concept. 
+The thought of being able to use the same syntax for custom data formats (in-place of where you might have used XML, some other markup language, or even rolled some custom structure in the past) and for the scripts, was a tempting concept.
 
 Now there are languages that have a data format, and then extra syntactical features for representing operations/manipulation and program structure which is not included. Such as Javascript with JSON, or Erlang/Elixir with its data types (terms can be parsed using `io:read`), etc. But the languages with a Lisp-like representation won me over, as there was something so elegant about exact relation between data structure and code.
 
@@ -36,10 +36,10 @@ Now there are languages that have a data format, and then extra syntactical feat
 
 (library "core" ; A shader library that uses all the .fs/.vs files in the current directory
     (if @opengl (
-        (loop "file" (search @cd ("*.fs" "*.vs")) 
-            (source 
-                (replace "." "-" (filename file)) 
-                (if (suffix "fs" file) fragment vertex) 
+        (loop "file" (search @cd ("*.fs" "*.vs"))
+            (source
+                (replace "." "-" (filename file))
+                (if (suffix "fs" file) fragment vertex)
                 (dir file)
             )
         )
@@ -93,7 +93,7 @@ Tagged Pointers
 
 Tagged pointers are a common concept among language developers/compiler hackers. It essentially involves storing additional data in a pointer. This is often done because many platforms different types have different alignments, and many have malloc's which return pointers at word boundaries. If that is true for a particular platform, it essentially means you always have some bits that will never be used. Or you can choose to enforce alignment yourself, so you'll know you have the number of bits required free.
 
-Now I was using it as a way to alleviate the cost of copying expressions, by forgoing from allocating whenever possible. My expressions have the following types: atoms (string), strings, integers (int32), floats (float/binary32), list, custom data. Obvious choices to apply this concept are strings, integers, floats, and atoms. 
+Now I was using it as a way to alleviate the cost of copying expressions, by forgoing from allocating whenever possible. My expressions have the following types: atoms (string), strings, integers (int32), floats (float/binary32), list, custom data. Obvious choices to apply this concept are strings, integers, floats, and atoms.
 
 Strings
 -------
@@ -190,16 +190,16 @@ float UInt32ToFloat(uint32_t v) //This is a redundant function, as it could simp
     e |= e >> 8;
     e |= e >> 16;
     e ^= (e >> 1);
-    
+
     //Get mask for lowest unset bits, and store the non-power of 2 value in m
     uint32_t m = (e = ~-e) & v;
-    
+
     //Count set bits
     e -= ((e >> 1) & 0x55555555);
     e = (e & 0x33333333) + ((e >> 2) & 0x33333333);
     e = (e + (e >> 4)) & 0xf0f0f0f;
     e = (e * 0x1010101) >> 24;
-    
+
     return (binary32_t){ .internal = { .exponent = e + 127, .mantissa = m << (23 - e) } }.f;
 }
 
@@ -217,7 +217,7 @@ float IntRepToFloat(uint32_t v)
         v = (v % 100000) * 2;
         f.internal.mantissa |= ((v >= 100000) << (22 - Index)) >> (f.internal.exponent - 127);
     }
-    
+
     return f.f;
 }
 

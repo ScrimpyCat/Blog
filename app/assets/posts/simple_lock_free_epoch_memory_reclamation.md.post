@@ -245,6 +245,6 @@ The other problem is thread failure _as brought up in the paper_. If a thread fa
 Concluding
 ----------
 
-To see this in-practice the implementation can be [found here](https://github.com/ScrimpyCat/Common/blob/master/CommonC/CommonC/EpochGarbageCollector.c). One interesting approach that can be taken from this is simply using the retained references for critical sections and avoiding the epochs altogether. Now that strategy would only be appropriate in very low contested situations as it would only be able to reclaim the memory when no threads are currently in the critical section, but for some use cases that may be possible.  
+To see this in-practice the implementation can be [found here](https://github.com/ScrimpyCat/CommonC/blob/master/CommonC/EpochGarbageCollector.c). One interesting approach that can be taken from this is simply using the retained references for critical sections and avoiding the epochs altogether. Now that strategy would only be appropriate in very low contested situations as it would only be able to reclaim the memory when no threads are currently in the critical section, but for some use cases that may be possible.  
 
 Lastly as always, lock-free programming is hard. Hopefully there are no errors, so always use at your own risk.
