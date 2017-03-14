@@ -13,7 +13,7 @@ Editors
 
 Up to that point I was using my text editor and simply marking the source as Scheme. While this provided some nice syntax highlighting, it missed out on exposing any of the APIs or potentially helpful auto-completions for the language. To solve this I decided to create a better editing environment. This meant having helpful docs, syntax highlighting designed for the language, and context/API aware auto-completions.
 
-So I went about creating an [Atom package](https://github.com/ScrimpyCat/language-blob) that would provide these things. To accommodate a changing API I structured it by making the auto-completer lookup API spec definitions. These are JSON files specifying the definition of the API available (functions, options, state, enums, inputs). [An example of these files can be found here](https://github.com/ScrimpyCat/Blob-Game/blob/master/src/scripting/evaluators/io.json). This not only made it simple to add or change API definitions over time, but it also opens up the possibility for non-Engine API to be added (user's adding their own custom API spec definitions).
+So I went about creating an [Atom package](https://github.com/ScrimpyCat/language-blob) that would provide these things. To accommodate a changing API I structured it by making the auto-completer lookup API spec definitions. These are JSON files specifying the definition of the API available (functions, options, state, enums, inputs). [An example of these files can be found here](https://github.com/ScrimpyCat/CommonGameKit/blob/master/src/scripting/evaluators/io.json). This not only made it simple to add or change API definitions over time, but it also opens up the possibility for non-Engine API to be added (user's adding their own custom API spec definitions).
 
 ![auto-complete](https://cloud.githubusercontent.com/assets/3411736/15416385/1eb28fd8-1e8e-11e6-9277-1fd19f7d3f54.gif)
 
@@ -47,7 +47,7 @@ The additional benefit of applying these strict naming rules is we can now optim
 Lookups
 -------
 
-As the original implementation just went about looking up functions and state very naively (string comparison in array), and this was one thing that I knew would have a detrimental effect on performance. The time arrived that it needed to be optimized, and became one of the key areas to focus on. 
+As the original implementation just went about looking up functions and state very naively (string comparison in array), and this was one thing that I knew would have a detrimental effect on performance. The time arrived that it needed to be optimized, and became one of the key areas to focus on.
 
 The most obvious improvement to make was to use hash maps for the actual lookup operation. Especially as function registration is very infrequent, while actual lookup happens all the time. While to be expected this had a noticeable improvement, there was still much room for improvement. So the next glaring issue turned out to be hashing of strings.
 
