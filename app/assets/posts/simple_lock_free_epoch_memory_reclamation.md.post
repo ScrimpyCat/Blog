@@ -240,7 +240,7 @@ else
 }
 }
 
-The other problem is thread failure _as brought up in the paper_. If a thread fails in the critical section, it's reference will remain forever and that epoch will never be reclaimed. However the other epochs can still be reclaimed with this approach. So a potential strategy to lessen that affect could be to increase the number of epochs.
+The other problem is thread failure _as brought up in the paper_. If a thread fails in the critical section, its reference will remain forever and that epoch will never be reclaimed. However the other epochs can still be reclaimed with this approach. So a potential strategy to lessen that affect could be to increase the number of epochs.
 
 Concluding
 ----------
