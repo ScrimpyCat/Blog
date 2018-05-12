@@ -8,7 +8,7 @@ tags: lock-free
 
 Epoch based memory reclamation or EBR, is an approach that was [outlined in this paper](https://www.cl.cam.ac.uk/techreports/UCAM-CL-TR-579.pdf). It describes that all you need to successfully manage the delayed reclamation of memory used by your lock-free algorithms, is to separate references into 3 groups. These groups are the epochs. The oldest epoch at any given time that can be safely reclaimed is 2 epochs behind the most recent.
 
-This means that as a new thread enters a new epoch it will either be placed 1 place or 2 places ahead of the current global epoch, and will proceed to add any of its memory that needs reclaiming to it. Then when no threads are currently accessing the current global (stale) epoch, _have all moved 1 or 2 places ahead_, that old memory can now safely be reclaimed. And then the global epoch is moved one place further. This allows for the continued delayed reclamation of memory, while making sure only the memory that can potentially still be accessed is kept around.
+This means that as a new thread enters a new epoch it will be placed 2 places ahead of the current global epoch, and will proceed to add any of its memory that needs reclaiming to it. Then when no threads are currently accessing the current global (stale) epoch, _have all moved 2 places ahead_, that old memory can now safely be reclaimed. And then the global epoch is moved one place further. This allows for the continued delayed reclamation of memory, while making sure only the memory that can potentially still be accessed is kept around.
 
 The Approach
 ------------
@@ -57,7 +57,7 @@ typedef struct {
 
 gc_t *Create(void);
 void Destroy(gc_t *GC);
-void Reclaim(gc_t *GC, entry_t *Node);
+void Reclaim(gc_t *GC, entry_t *Node, epoch_t Epoch);
 void Start(gc_t *GC);
 void Manage(gc_t *GC, void *Item, void (*Reclaimer)(void*));
 void Stop(gc_t *GC);
@@ -96,7 +96,7 @@ void Destroy(gc_t *GC)
     for (int Loop = 0; Loop < 3; Loop++)
     {
         managed_list_t Managed = atomic_load(&GC->managed[Loop]);
-        Reclaim(GC, Managed.list);
+        Reclaim(GC, Managed.list, atomic_load(&GC->epoch));
     }
 
     free(GC);
@@ -107,7 +107,7 @@ Next will be the `Reclaim` function. This function will be used when a stale epo
 
 @code:c
 {
-void Reclaim(gc_t *GC, entry_t *Node)
+void Reclaim(gc_t *GC, entry_t *Node, epoch_t Epoch)
 {
     while (Node)
     {
@@ -118,11 +118,11 @@ void Reclaim(gc_t *GC, entry_t *Node)
         free(Temp); //Free node
     }
 
-    atomic_fetch_add(&GC->epoch, 1); //Increment the global epoch
+    atomic_compare_exchange_strong(&GC->epoch, &Epoch, Epoch + 1); //Increment the global epoch only once for the given epoch (as multiple threads may reach this point, though only one will have a non-NULL Node)
 }
 }
 
-Next will be the `Start` function. This function will be used by our lock-free algorithms to indicate when a memory managed section will begin (adding items to be managed or reading managed items). It will first get the local state for the thread, or create it if there is none. Then the local epoch will either be moved 1 place ahead or remain 2 places ahead, so it is no longer referencing the global (stale) epoch. We then retain a reference to the epoch we will be using.
+Next will be the `Start` function. This function will be used by our lock-free algorithms to indicate when a memory managed section will begin (adding items to be managed or reading managed items). It will first get the local state for the thread, or create it if there is none. Then the local epoch will either be moved 2 places ahead, so it is no longer referencing the global (stale) epoch. We then retain a reference to the epoch we will be using.
 
 @code:c
 {
@@ -138,23 +138,36 @@ void Start(gc_t *GC)
         tss_set(GC->key, Local);
     }
 
-    const epoch_t PrevEpoch = Local->epoch;
-    epoch_t Epoch = atomic_load(&GC->epoch) % 3;
+    //Repeat until we successfully retain a reference to an epoch +2 ahead of the global
+    for (epoch_t GlobalEpoch = atomic_load(&GC->epoch); ; )
+    {
+        epoch_t Epoch = (GlobalEpoch + 2) % 3; //Set current thread's epoch to +2 above global epoch
+        *Local = (local_t){ .head = NULL, .tail = NULL, .epoch = Epoch };
 
-    Epoch = PrevEpoch <= Epoch ? (Epoch + 1) % 3 : PrevEpoch; //Set current threads epoch to either +1 above global epoch or leave as +2
-    *Local = (local_t){ .head = NULL, .tail = NULL, .epoch = Epoch };
+        //Retain a reference to the current epoch
+        managed_list_t Managed;
+        do {
+            Managed = atomic_load(&GC->managed[Epoch]);
+        } while (!atomic_compare_exchange_weak(&GC->managed[Epoch], &Managed, ((managed_list_t){ .list = Managed.list, .refCount = Managed.refCount + 1 })));
 
-    //Retain a reference to the current epoch
-    managed_list_t Managed;
-    do {
-        Managed = atomic_load(&GC->managed[Epoch]);
-    } while (!atomic_compare_exchange_weak(&GC->managed[Epoch], &Managed, ((managed_list_t){ .list = Managed.list, .refCount = Managed.refCount + 1 })));
+        //Check to see global epoch has not changed since retaining the local epoch reference
+        epoch_t NewGlobalEpoch = atomic_load(&GC->epoch);
+        if (GlobalEpoch == NewGlobalEpoch) break;
+
+        GlobalEpoch = NewGlobalEpoch;
+
+        //Release the reference to the current epoch
+        if (!atomic_compare_exchange_strong(&GC->managed[Epoch], &Managed, ((managed_list_t){ .list = Managed.list, .refCount = Managed.refCount - 1 })))
+        {
+            do {
+                Managed = atomic_load(&GC->managed[Epoch]);
+            } while (!atomic_compare_exchange_weak(&GC->managed[Epoch], &Managed, ((managed_list_t){ .list = Managed.list, .refCount = Managed.refCount - 1 })));
+        }
+    }
 }
 }
 
-Now you may notice that there is a chance the epoch retrieved by `atomic_load(&GC->epoch)` may then have moved a position ahead by the time the thread's epoch is retained. This is ok because in the cleanup we will be referencing the stale epoch based off of the local epoch's value. This prevents circumstances where we might actually have state still referencing state in an older epoch that is then destroyed.
-
-Next we will implement the `Manage` function. This function will be used to add any items that we wish to have managed by the system. So we will create a new entry and then store it in the local thread state. Reason we store it in the thread's local state here is to alleviate an additional CAS-loop that would have otherwise been required. Instead we keep a list, _keeping track of head and tail nodes_, of entries from that thread, which will be merged only once the managed section has finished.
+Next we will implement the `Manage` function. This function will be used to add any items that we wish to have managed by the system. So we will create a new entry and then store it in the local thread state. Reason we store it in the thread's local state here is to alleviate an additional CAS-loop that would have otherwise been required. Instead we keep a list, _keeping track of head and tail nodes_, of entries from that thread which will be merged only once the managed section has finished.
 
 @code:c
 {
@@ -172,15 +185,16 @@ void Manage(gc_t *GC, void *Item, void (*Reclaimer)(void*))
 }
 }
 
-Finally all that is left is to implement our `Stop` function. This function will be used by our lock-free algorithms to indicate when a memory managed section will end (no longer items to be managed or reading managed items). It will first increment our local epoch so it is 2 places ahead of the old current global epoch. We then need to decrement our reference to our current epoch and merge our entries with it. _Both can be achieved with a single CAS-loop._ Finally we check the epoch 2 places behind our current epoch, and check to see if it can be reclaimed. If there are no references to it, we can safely reclaim it.
+Finally all that is left is to implement our `Stop` function. This function will be used by our lock-free algorithms to indicate when a memory managed section will end (no longer items to be managed or reading managed items). It will first get the global epoch, this will become our stale epoch (if it meets the right conditions). We then need to decrement our reference to our current epoch and merge our entries with it. _Both can be achieved with a single CAS-loop._ Finally to workout whether our global epoch is stale, and can be reclaimed. We need to check that there are no longer any references to it and there are no references to the epoch after it (all references are now +2 places ahead). If those conditions are met we can safely reclaim it.
 
 @code:c
 {
 void Stop(gc_t *GC)
 {
     local_t *Local = tss_get(GC->key);
+
+    const epoch_t GlobalEpoch = atomic_load(&GC->epoch);
     const epoch_t Epoch = Local->epoch;
-    Local->epoch = Epoch <= ((atomic_load(&GC->epoch) + 1) % 3) ? (Epoch + 1) % 3 : Epoch; //Increment local epoch so it is +2 above epoch
 
     managed_list_t Managed;
     if (Local->head)
@@ -200,51 +214,86 @@ void Stop(gc_t *GC)
         } while (!atomic_compare_exchange_weak(&GC->managed[Epoch], &Managed, ((managed_list_t){ .list = Managed.list, .refCount = Managed.refCount - 1 })));
     }
 
-    const epoch_t StaleEpoch = ((Epoch + 3) - 2) % 3; //Get epoch that is 2 places behind current
+    const epoch_t StaleEpoch = GlobalEpoch % 3;
     Managed = atomic_load(&GC->managed[StaleEpoch]);
-    if ((Managed.refCount == 0) && (atomic_compare_exchange_strong(&GC->managed[StaleEpoch], &Managed, ((managed_list_t){ .list = NULL, .refCount = 0 })))) Reclaim(GC, Managed.list); //Check if the stale epoch can be reclaimed
+    if (Managed.refCount == 0) //Check if the stale epoch is no longer referenced
+    {
+        managed_list_t NextManaged = atomic_load(&GC->managed[(StaleEpoch + 1) % 3]);
+        if ((NextManaged.refCount == 0) && (atomic_compare_exchange_strong(&GC->managed[StaleEpoch], &Managed, ((managed_list_t){ .list = NULL, .refCount = 0 })))) //Check if the stale epoch can be reclaimed
+        {
+            if (GlobalEpoch == atomic_load(&GC->epoch)) Reclaim(GC, Managed.list, GlobalEpoch); //Before reclaiming double check another thread hasn't beaten us to it
+            else if (Managed.list)
+            {
+                //If another thread has beaten us and there were nodes attached, proceed to add them back
+                entry_t *List = Managed.list, *Tail = Managed.list;
+                while (Tail->next) Tail = Tail->next;
+
+                for (epoch_t GlobalEpoch = atomic_load(&GC->epoch); ; )
+                {
+                    //Retain a reference to an epoch +2 places ahead of global
+                    epoch_t Epoch = (GlobalEpoch + 2) % 3;
+                    managed_list_t Managed;
+                    do {
+                        Managed = atomic_load(&GC->managed[Epoch]);
+                    } while (!atomic_compare_exchange_weak(&GC->managed[Epoch], &Managed, ((managed_list_t){ .list = Managed.list, .refCount = Managed.refCount + 1 })));
+
+                    //Check to see global epoch has not changed since retaining the local epoch reference
+                    epoch_t NewGlobalEpoch = atomic_load(&GC->epoch);
+                    if (GlobalEpoch == NewGlobalEpoch)
+                    {
+                        //Release a reference to the current epoch and add local entries to global entries for this epoch
+                        do {
+                            Managed = atomic_load(&GC->managed[Epoch]);
+                            Tail->next = Managed.list;
+                        } while (!atomic_compare_exchange_weak(&GC->managed[Epoch], &Managed, ((managed_list_t){ .list = List, .refCount = Managed.refCount - 1 })));
+
+                        break;
+                    }
+
+                    GlobalEpoch = NewGlobalEpoch;
+
+                    //Release the reference to the current epoch
+                    if (!atomic_compare_exchange_strong(&GC->managed[Epoch], &Managed, ((managed_list_t){ .list = Managed.list, .refCount = Managed.refCount - 1 })))
+                    {
+                        do {
+                            Managed = atomic_load(&GC->managed[Epoch]);
+                        } while (!atomic_compare_exchange_weak(&GC->managed[Epoch], &Managed, ((managed_list_t){ .list = Managed.list, .refCount = Managed.refCount - 1 })));
+                    }
+                }
+            }
+        }
+    }
 }
 }
 
 Caveats
 -------
 
-CAS-loops are expensive, and unfortunately this implementation requires 2 of them and a third strong CAS. _Albeit that will only be executed some of the time._ Other memory reclamation strategies such as the lock-based EBR avoids them, hazard pointers avoid them, QSBR avoids them, etc. It may be possible to replace them somehow, while I haven't given too much thought as to how that may be achieved for now. One idea is to potentially split `managed_list_t` into two separate atomics. The reference is then incremented, and then an unordered insert is performed for any entries. And then on cleanup, decrement reference, obtain the stale entries, and finally check if stale reference is 0 if not add the entries back. This would require iterating over entries which might negate the elimination of the CAS-loops. But essentially something along the lines of:
+CAS-loops are expensive, and unfortunately this implementation requires a number of them, however it only requires 2 of them and 2 strong CAS on the best case. Other memory reclamation strategies such as the lock-based EBR avoids them, hazard pointers avoid them, QSBR avoids them, etc. It may be possible to replace them somehow, but I haven't given too much thought as to how that may be achieved for now.
 
-@code:c
-{
-//Start
-atomic_fetch_add(&GC->managed[Epoch].refCount, 1);
-
-//Manage (or could be done in stop/delayed insert)
-entry_t *List = atomic_exchange(&GC->managed[Epoch].list, NULL);
-List = List ? InsertBefore(List, Entry) : Entry
-
-entry_t *NewList = atomic_exchange(&GC->managed[Epoch].list, List);
-if (NewList) InsertAfter(List, NewList);
-
-//stop
-atomic_fetch_sub(&GC->managed[Epoch].refCount, 1);
-
-entry_t *List = atomic_exchange(&GC->managed[StaleEpoch].list, NULL);
-if (atomic_load(&GC->managed[StaleEpoch].refCount, 1) == 0)
-{
-    Reclaim(GC, List);
-}
-else
-{
-    atomic_fetch_add(&GC->managed[StaleEpoch].refCount, 1); //As wouldn't want reclamation whilst iterating list
-    entry_t *NewList = atomic_exchange(&GC->managed[StaleEpoch].list, List);
-    if (NewList) InsertAfter(List, NewList);
-    atomic_fetch_sub(&GC->managed[StaleEpoch].refCount, 1);
-}
-}
-
-The other problem is thread failure _as brought up in the paper_. If a thread fails in the critical section, its reference will remain forever and that epoch will never be reclaimed. However the other epochs can still be reclaimed with this approach. So a potential strategy to lessen that affect could be to increase the number of epochs.
+The other problem is thread failure _as brought up in the paper_. If a thread fails in the critical section, its reference will remain forever and memory will start to _"leak"_ as the global epoch will no longer able to advance so that memory won't be reclaimed. A strategy to avoid this might be to watch for non-recoverable thread failure, replace the GC's other threads are using and destroy the old ones.
 
 Concluding
 ----------
 
-To see this in-practice the implementation can be [found here](https://github.com/ScrimpyCat/CommonC/blob/master/CommonC/EpochGarbageCollector.c). One interesting approach that can be taken from this is simply using the retained references for critical sections and avoiding the epochs altogether. Now that strategy would only be appropriate in very low contested situations as it would only be able to reclaim the memory when no threads are currently in the critical section, but for some use cases that may be possible.  
+To see this in-practice the implementation can be [found here](https://github.com/ScrimpyCat/CommonC/blob/master/CommonC/EpochGarbageCollector.c). One interesting approach that can be taken from this is simply using the [retained references for critical sections](https://github.com/ScrimpyCat/CommonC/blob/master/CommonC/LazyGarbageCollector.c) and avoiding the epochs altogether. Now that strategy would only be appropriate in very low contested situations as it would only be able to reclaim the memory when no threads are currently in the critical section, but for some use cases that may be possible.
 
 Lastly as always, lock-free programming is hard. Hopefully there are no errors, so always use at your own risk.
+
+Updates
+=======
+
+Major changes have been made to this article. The details of those changes are outlined below.
+
+12th May 2018
+-------------
+
+As it would turn out lock-free programming is certainly hard and misleading. The original implementation presented in this article ([which can be seen here](https://github.com/ScrimpyCat/Blog/blob/038ca5ed23a6854d68706a68ee5b0b6cd1d1ec9d/app/assets/posts/simple_lock_free_epoch_memory_reclamation.md.post)) did end up having some bugs. Amusingly I had been using an implementation like this for years and had never experienced a crash related to memory reclamation.
+
+It was only recently when I was working on a new lock-free algorithm that when I went to stress test it, I started noticing incorrect results (unfortunately stress testing my other lock-free algorithms never happened to bring up this issue). For ages I thought something must've been wrong with this new algorithm, but I couldn't workout what. Eventually I managed to track it down to the epoch memory reclaimer implementation I was using, which is what led me to making the above fixes.
+
+The changes made were:
+
+* Guaranteeing that threads are set to a local epoch of +2 spaces ahead of the global epoch. As mistakingly assigning a thread to epoch +1, can create the situation where memory it is managing can end up being 2 places behind threads that are currently referencing it.
+* Enforcing `Reclaim` only increments the global epoch by 1 place if multiple threads manage to make it there for the same epoch. While only 1 thread will have the possibility of having entries that can be reclaimed, the threads can still advance the global epoch beyond 1 position. This was where the CAS comes in for the `Reclaim function`.
+* The last is avoiding leaking or reclaiming entries that were added when two threads share the same stale epoch but one stalls before retrieving the `managed_list_t`. Meanwhile the other thread advances, reclaims the memory and increments the global epoch. This means the stale epoch the stalled thread is referencing will now be the +2 epoch every new thread will reference. If during that stall, another thread comes along and adds some entries to that epoch and leaves. We now have a potential problem. When the stalled thread resumes, if no other thread is in a critical section (so no references), then that thread would obtain a list of entries and think they're free to be reclaimed. This is why we have that check to see global epoch hasn't changed, and proceed to add any entries back into the list if it has.
